@@ -8,11 +8,12 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections import Counter, defaultdict
 
-from . import __version__
+from . import __version__, render
 
 OLLAMA_URL = os.environ.get("LOGSLEUTH_OLLAMA_URL", "http://localhost:11434")
 DEFAULT_MODEL = os.environ.get("LOGSLEUTH_MODEL", "qwen3:8b")
@@ -75,10 +76,11 @@ def preprocess(text: str) -> dict:
                 if first_pct <= 3 else f"first appears at {first_pct}% of file")
         patterns.append(f"{st['count']:6d}x  [{note}]  {p[:180]}")
 
-    changes = []
+    changes, change_pcts = [], []
     for i, l in enumerate(lines):
         if CHANGE_PAT.search(l) and not SIGNAL_PAT.search(l):
             changes.append(f"(line {i+1}, {round(100*i/total)}% of file) {l.strip()[:220]}")
+            change_pcts.append(100 * i / total)
         if len(changes) >= 15:
             break
 
@@ -102,9 +104,12 @@ def preprocess(text: str) -> dict:
             direction = "GREW" if ratio > 1 else "DROPPED"
             trends.append((abs(ratio if ratio > 1 else 1 / ratio),
                            f"{key}: {direction} {head:.1f}{unit} -> {tail:.1f}{unit} "
-                           f"(x{ratio:.1f}, {len(pts)} samples across file)"))
+                           f"(x{ratio:.1f}, {len(pts)} samples across file)",
+                           (f"{key} {head:.0f}→{tail:.0f}{unit}",
+                            [v for _, v in pts], "up" if ratio > 1 else "down")))
     trends.sort(key=lambda x: -x[0])
-    trends = [t for _, t in trends[:12]]
+    trend_series = [t[2] for t in trends[:12]]
+    trends = [t[1] for t in trends[:12]]
 
     dims = defaultdict(Counter)
     for i in sig_idx:
@@ -127,7 +132,8 @@ def preprocess(text: str) -> dict:
             windows.append("\n".join(lines[max(0, last - 15):last + 15]))
 
     return {"total_lines": total, "signal_lines": len(sig_idx), "patterns": patterns,
-            "changes": changes, "trends": trends, "dim_notes": dim_notes, "windows": windows}
+            "changes": changes, "trends": trends, "dim_notes": dim_notes, "windows": windows,
+            "sig_positions": sig_idx, "change_pcts": change_pcts, "trend_series": trend_series}
 
 
 PROMPT = """You are an experienced SRE doing incident root-cause analysis from preprocessed log evidence.
@@ -237,6 +243,7 @@ def main() -> None:
     ap.add_argument("logfile", help="path to a log file, or '-' to read stdin")
     ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model (default: {DEFAULT_MODEL})")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    ap.add_argument("--plain", action="store_true", help="plain markdown output (no colors/graphs)")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the evidence pack that WOULD be sent to the local model, then exit")
     ap.add_argument("--version", action="version", version=f"logsleuth {__version__}")
@@ -263,14 +270,18 @@ def main() -> None:
 
     check_ollama(args.model)
     status(f"analyzing with local model {args.model} (first run may take ~1-2 min)…")
+    t0 = time.monotonic()
     try:
         report = analyze(prompt, args.model)
     except urllib.error.URLError as e:
         die(f"ollama request failed: {e}")
+    elapsed = time.monotonic() - t0
 
     if args.json:
         print(json.dumps({"model": args.model, "stats": {k: s[k] for k in ("total_lines", "signal_lines")},
                           "report_markdown": report}, ensure_ascii=False, indent=2))
+    elif render.supports_pretty(force_plain=args.plain):
+        print(render.render_report(report, s, args.model, elapsed))
     else:
         print(report)
 

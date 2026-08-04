@@ -60,6 +60,24 @@ logsleuth /var/log/app/incident.log
 
 No other dependencies — pure stdlib.
 
+
+## Output
+
+In a terminal you get a visual report: an **incident map** (error density across
+the file, with deploy/config markers), **trend sparklines** (latency, memory,
+queue depths), and color-coded sections with confidence badges. Piped or with
+`--plain` it degrades to clean markdown; `--json` for machines.
+
+```
+ INCIDENT MAP (error density across the file)
+   ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃▅▄▅▅▄▄▅▆▇▅▆▆▆▆▆▆▆▆▆▆▆▇▆▇▆▆███
+                 ▼                               ▼ = deploy/config/migration
+
+ TRENDS
+   ▼ idle 28→0                    ██████▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+   ▲ latency 57→218ms             ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁██▇███▁▁▁▁▁
+```
+
 ## Usage
 
 ```bash
