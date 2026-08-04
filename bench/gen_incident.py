@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Генератор синтетического инцидента для теста loglens."""
+"""Генератор синтетического инцидента для теста logsleuth."""
 import random
 from datetime import datetime, timedelta
 

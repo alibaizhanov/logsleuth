@@ -1,4 +1,4 @@
-# loglens
+# logsleuth
 
 **Local AI root-cause analysis for production logs. Nothing leaves your machine.**
 
@@ -9,7 +9,7 @@ you can use it on logs you'd never paste into a cloud AI: they're full of PII, t
 and internal hostnames, and your security team knows it.
 
 ```
-$ loglens incident.log
+$ logsleuth incident.log
 
 ## Root cause hypothesis
 PostgreSQL connection pool size reduction (from 50 to 10) during deployment.
@@ -53,9 +53,9 @@ yourself: `python bench/run_bench.py`.
 ## Install
 
 ```bash
-pipx install loglens          # or: pip install loglens
+pipx install logsleuth       # or: pip install logsleuth   (installs the `logsleuth` command)
 ollama pull qwen3:8b          # one-time, ~5GB
-loglens /var/log/app/incident.log
+logsleuth /var/log/app/incident.log
 ```
 
 No other dependencies — pure stdlib.
@@ -63,11 +63,11 @@ No other dependencies — pure stdlib.
 ## Usage
 
 ```bash
-loglens incident.log                  # analyze a file
-kubectl logs deploy/api | loglens -   # or pipe anything into it
-loglens incident.log --json           # machine-readable output
-loglens incident.log --dry-run        # show the evidence pack, prove nothing else is sent
-loglens incident.log --model qwen3:14b  # bigger machine, smarter analysis
+logsleuth incident.log                  # analyze a file
+kubectl logs deploy/api | logsleuth -   # or pipe anything into it
+logsleuth incident.log --json           # machine-readable output
+logsleuth incident.log --dry-run        # show the evidence pack, prove nothing else is sent
+logsleuth incident.log --model qwen3:14b  # bigger machine, smarter analysis
 ```
 
 `--dry-run` prints exactly what would be passed to the local model — audit it, then
@@ -80,7 +80,7 @@ loglens incident.log --model qwen3:14b  # bigger machine, smarter analysis
 | 8GB RAM | `qwen3:4b` | fast, decent |
 | 16GB RAM | `qwen3:8b` | **default**, benchmark numbers above |
 | 32GB+ RAM | `qwen3:14b` / `qwen3:32b` | noticeably deeper analysis |
-| On-prem server | anything Ollama serves | point `LOGLENS_OLLAMA_URL` at it |
+| On-prem server | anything Ollama serves | point `LOGSLEUTH_OLLAMA_URL` at it |
 
 ## How it works
 
@@ -91,13 +91,13 @@ raw logs ──► deterministic preprocessor ──► evidence pack ──► 
 ```
 
 The preprocessor is the point: local 8B models are good analysts but bad readers of
-2GB files. loglens does the reading with boring, auditable code and saves the model
+2GB files. logsleuth does the reading with boring, auditable code and saves the model
 for the part it's actually good at — causal reasoning over dense evidence.
 
 ## Roadmap
 
 - [ ] Deeper causal-chain analysis (the 2/10 benchmark misses)
-- [ ] `loglens-8b`: a fine-tuned model distilled from thousands of incident analyses
+- [ ] `logsleuth-8b`: a fine-tuned model distilled from thousands of incident analyses
 - [ ] Watch mode / webhook: auto-analyze on alert
 - [ ] Team features: shared incident history, PagerDuty/Opsgenie integration
 

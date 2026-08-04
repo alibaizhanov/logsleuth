@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduce the loglens benchmark: regenerate the 10 blind scenarios and analyze each.
+"""Reproduce the logsleuth benchmark: regenerate the 10 blind scenarios and analyze each.
 
 Usage:  python bench/run_bench.py [--model qwen3:8b]
 Ground truth for grading is in bench/bench_truth.md.
@@ -23,7 +23,7 @@ def main() -> None:
         out = HERE / f"bench_report_{i:02d}.md"
         print(f"[bench] analyzing {log.name} …", flush=True)
         with open(out, "w") as fh:
-            subprocess.run([sys.executable, "-m", "loglens", str(log), "--model", args.model],
+            subprocess.run([sys.executable, "-m", "logsleuth", str(log), "--model", args.model],
                            stdout=fh, check=True)
     print(f"[bench] done — compare bench_report_NN.md against {HERE/'bench_truth.md'}")
 

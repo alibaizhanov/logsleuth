@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Слепой бенчмарк: 10 новых типов отказов, которых loglens v2 не видел.
-Код loglens заморожен ДО генерации этих сценариев."""
+"""Слепой бенчмарк: 10 новых типов отказов, которых logsleuth v2 не видел.
+Код logsleuth заморожен ДО генерации этих сценариев."""
 import random
 from datetime import datetime, timedelta
 

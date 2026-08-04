@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "loglens"
+name = "logsleuth"
 version = "0.1.0"
 description = "Local AI root-cause analysis for production logs. Nothing leaves your machine."
 readme = "README.md"
@@ -22,10 +22,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/alibaizhanov/loglens"
+Homepage = "https://github.com/alibaizhanov/logsleuth"
 
 [project.scripts]
-loglens = "loglens.cli:main"
+logsleuth = "logsleuth.cli:main"
 
 [tool.setuptools]
-packages = ["loglens"]
+packages = ["logsleuth"]

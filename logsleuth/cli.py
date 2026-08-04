@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""loglens — local AI root-cause analysis for production logs.
+"""logsleuth — local AI root-cause analysis for production logs.
 
 Nothing leaves your machine: deterministic preprocessing + a local LLM via Ollama.
 """
@@ -14,8 +14,8 @@ from collections import Counter, defaultdict
 
 from . import __version__
 
-OLLAMA_URL = os.environ.get("LOGLENS_OLLAMA_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.environ.get("LOGLENS_MODEL", "qwen3:8b")
+OLLAMA_URL = os.environ.get("LOGSLEUTH_OLLAMA_URL", "http://localhost:11434")
+DEFAULT_MODEL = os.environ.get("LOGSLEUTH_MODEL", "qwen3:8b")
 MAX_CHARS_TO_MODEL = 26000
 
 SIGNAL_PAT = re.compile(
@@ -37,7 +37,7 @@ def color(s: str, c: str) -> str:
 
 
 def status(msg: str) -> None:
-    sys.stderr.write(color(f"[loglens] {msg}\n", C_DIM))
+    sys.stderr.write(color(f"[logsleuth] {msg}\n", C_DIM))
 
 
 def die(msg: str, hint: str = "") -> None:
@@ -203,7 +203,7 @@ def check_ollama(model: str) -> None:
         ollama_get("/api/version")
     except (urllib.error.URLError, OSError):
         die("Ollama is not running.",
-            "loglens uses a local model via Ollama so your logs never leave this machine.\n"
+            "logsleuth uses a local model via Ollama so your logs never leave this machine.\n"
             "  install:  https://ollama.com/download\n"
             "  then run: ollama serve")
     try:
@@ -232,14 +232,14 @@ def analyze(prompt: str, model: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        prog="loglens",
+        prog="logsleuth",
         description="Local AI root-cause analysis for production logs. Nothing leaves your machine.")
     ap.add_argument("logfile", help="path to a log file, or '-' to read stdin")
     ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model (default: {DEFAULT_MODEL})")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the evidence pack that WOULD be sent to the local model, then exit")
-    ap.add_argument("--version", action="version", version=f"loglens {__version__}")
+    ap.add_argument("--version", action="version", version=f"logsleuth {__version__}")
     args = ap.parse_args()
 
     if args.logfile == "-":
