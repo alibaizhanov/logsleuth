@@ -18,6 +18,7 @@ TS_PAT = re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})")
 
 from . import __version__, render
 from .scan import build_pack, scan, spool_stdin
+from .window import parse_duration, parse_when, slice_file
 
 OLLAMA_URL = os.environ.get("LOGSLEUTH_OLLAMA_URL", "http://localhost:11434")
 DEFAULT_MODEL = os.environ.get("LOGSLEUTH_MODEL", "qwen3:8b")
@@ -217,6 +218,10 @@ def main() -> None:
     ap.add_argument("logfiles", nargs="+", metavar="logfile",
                     help="one or more log files (merged by timestamp, source becomes an analysis "
                          "dimension), '-' for stdin, or 'demo' for a bundled sample incident")
+    ap.add_argument("--last", metavar="DUR",
+                    help="analyze only the last window, e.g. 30m, 2h, 7d")
+    ap.add_argument("--since", metavar="TIME", help="analyze from this time onwards")
+    ap.add_argument("--until", metavar="TIME", help="analyze up to this time")
     ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model (default: {DEFAULT_MODEL})")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     ap.add_argument("--plain", action="store_true", help="plain markdown output (no colors/graphs)")
@@ -226,6 +231,30 @@ def main() -> None:
     args = ap.parse_args()
 
     path, tmp = resolve_input(args.logfiles)
+
+    if args.last or args.since or args.until:
+        win = tempfile.NamedTemporaryFile("w", suffix=".log", delete=False)
+        win.close()
+        try:
+            info = slice_file(path, win.name,
+                              since=parse_when(args.since) if args.since else None,
+                              until=parse_when(args.until) if args.until else None,
+                              last=parse_duration(args.last) if args.last else None)
+        except ValueError as e:
+            die(str(e))
+        if not info["ok"]:
+            die(info["reason"], "the file has no timestamps logsleuth can read; drop --last/--since")
+        if not info["sorted"]:
+            status("file is not in chronological order — filtering the whole file instead of seeking")
+        saved = 100 * (1 - info["bytes_read"] / max(info["bytes_total"], 1))
+        status(f"window: {info['lines']:,} lines"
+               f"{f' (skipped {saved:.0f}% of the file by seeking)' if saved > 5 else ''}")
+        if not info["lines"]:
+            die("the requested window contains no lines")
+        if tmp:
+            os.unlink(tmp)
+        path, tmp = win.name, win.name
+
     t_scan = time.monotonic()
     s = build_pack(scan(path))
     if tmp:

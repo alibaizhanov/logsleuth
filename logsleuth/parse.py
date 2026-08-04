@@ -8,6 +8,27 @@ the event they belong to instead of polluting the template counts.
 import json
 import re
 
+# Container runtimes prefix every line: CRI (k8s) as "<ts> stdout F msg",
+# Docker as a JSON envelope with a "log" field. Strip the envelope so the real
+# application line underneath is what gets parsed and grouped.
+CRI_PAT = re.compile(r"^(\S+)\s+(stdout|stderr)\s+([FP])\s?(.*)$")
+
+
+def strip_container_envelope(line):
+    """Return (inner_line, meta) after removing a CRI/Docker log wrapper."""
+    m = CRI_PAT.match(line)
+    if m:
+        return m.group(4), {"stream": m.group(2), "ts": m.group(1)}
+    if line.startswith('{"log":') or ('"stream"' in line[:60] and line.startswith("{")):
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            return line, None
+        if isinstance(obj, dict) and "log" in obj:
+            return str(obj["log"]).rstrip("\n"), {"stream": obj.get("stream"), "ts": obj.get("time")}
+    return line, None
+
+
 # --- timestamps -------------------------------------------------------------
 TS_PATTERNS = [
     re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})"),            # ISO / RFC3339

@@ -38,6 +38,13 @@ Confidence: High.
   read once in byte-range chunks across CPU cores and only aggregates are kept, so
   a 2GB log costs the same RAM as a 2MB one. (Measured: 2M lines in 3.1s / 21MB on
   an M1 Pro; a naive in-memory pass took 29s and 788MB.)
+- **Fits how logs actually live.** Kubernetes CRI lines (`<ts> stdout F …`) and
+  Docker JSON envelopes are unwrapped to the application line underneath;
+  gzipped rotated archives open directly; several files merge chronologically.
+- **Analyze a moment, not a file.** `--last 30m` / `--since` / `--until` binary-search
+  the window by byte offset, so a 30-minute slice of a huge log is read in
+  milliseconds — measured: 400k lines, 7.5s for the whole file vs **0.24s** for the
+  last 2 hours, skipping 99% of it. Unsorted files fall back to filtering, with a notice.
 - **Templates learned, not guessed.** Line grouping uses a Drain-style parse tree
   (ours, pure stdlib): variable parts are found *positionally* — block ids,
   hostnames, usernames, paths — instead of matching a list of "looks like data"
@@ -112,6 +119,10 @@ queue depths), and color-coded sections with confidence badges. Piped or with
 
 ```bash
 logsleuth demo                        # try it right now on a bundled sample incident
+logsleuth app.log --last 30m          # only the last 30 minutes (seeks, does not read the rest)
+logsleuth app.log --since 03:00 --until 04:00
+kubectl logs deploy/api --since=1h | logsleuth -   # k8s CRI format is unwrapped automatically
+logsleuth app.log.2.gz                # rotated archives work as-is
 logsleuth incident.log                # analyze a file
 logsleuth api.log db.log gateway.log  # merge services chronologically; source becomes a dimension
 kubectl logs deploy/api | logsleuth -  # or pipe anything into it

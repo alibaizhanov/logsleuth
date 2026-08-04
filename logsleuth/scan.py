@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import ProcessPoolExecutor
 
 from .drain import Drain
-from .parse import is_continuation, parse_line, sniff
+from .parse import is_continuation, parse_line, sniff, strip_container_envelope, timestamp_of
 
 CHANGE_PAT = re.compile(
     r"\b(deploy|deployment|migration|migrat|feature flag|flag .{0,20}enabled|config(?:uration)?"
@@ -46,6 +46,14 @@ def normalize(line):
     return line.translate(_DIGITS).strip()
 
 
+def _open(path, mode="rt"):
+    """Open plain or gzipped logs transparently — rotated archives are .gz."""
+    if path.endswith(".gz"):
+        import gzip
+        return gzip.open(path, mode, errors="replace")
+    return open(path, mode, errors="replace")
+
+
 def _decimate(pts, cap=SERIES_CAP):
     while len(pts) > cap:
         pts = pts[::2]
@@ -63,7 +71,7 @@ def _scan_range(args):
     total = signal = 0
     last_tpl = None
 
-    with open(path, errors="replace") as fh:
+    with _open(path) as fh:
         if start:
             fh.seek(start - 1)
             fh.readline()                      # drop the partial first line
@@ -76,6 +84,9 @@ def _scan_range(args):
             pos += len(line)
             line = line.rstrip("\n")
             total += 1
+            if not line.strip():
+                continue
+            line, _env = strip_container_envelope(line)
             if not line.strip():
                 continue
             # Fold stack traces / indented continuations into the event above:
@@ -167,7 +178,7 @@ def _window_at(path, offset, before=WINDOW, after=WINDOW):
     """Fetch context lines around a byte offset without reading the whole file."""
     if offset is None:
         return []
-    with open(path, errors="replace") as fh:
+    with _open(path) as fh:
         back = max(0, offset - 4000)
         fh.seek(back)
         if back:
@@ -189,7 +200,7 @@ def _window_at(path, offset, before=WINDOW, after=WINDOW):
 
 def _tail(path, n=WINDOW * 2):
     size = os.path.getsize(path)
-    with open(path, errors="replace") as fh:
+    with _open(path) as fh:
         fh.seek(max(0, size - 16000))
         return [l.rstrip("\n") for l in fh.readlines()[-n:]]
 
@@ -213,11 +224,12 @@ def _train_templates(path, fmt, n=TRAIN_LINES):
     the parallel scan cheap and deterministic.
     """
     miner = Drain()
-    with open(path, errors="replace") as fh:
+    with _open(path) as fh:
         for i, line in enumerate(fh):
             if i >= n:
                 break
             line = line.rstrip("\n")
+            line, _ = strip_container_envelope(line)
             if not line.strip() or is_continuation(line):
                 continue
             _, level, msg, _ = parse_line(line, fmt)
@@ -226,13 +238,32 @@ def _train_templates(path, fmt, n=TRAIN_LINES):
 
 
 def sniff_format(path, n=60):
-    with open(path, errors="replace") as fh:
+    with _open(path) as fh:
         sample = [fh.readline() for _ in range(n)]
-    return sniff([l for l in sample if l])
+    return sniff([strip_container_envelope(l.rstrip("\n"))[0] for l in sample if l])
 
 
 def scan(path, workers=None):
     """Scan a log file. Parallel across cores for large files, flat memory always."""
+    tmp_unpacked = None
+    if path.endswith(".gz"):
+        # A gzip stream has no stable byte offsets, so unpack once and treat it
+        # like any other file — keeps ranges, seeks and parallelism working.
+        import gzip
+        import shutil
+        tmp = tempfile.NamedTemporaryFile("wb", suffix=".log", delete=False)
+        with gzip.open(path, "rb") as src:
+            shutil.copyfileobj(src, tmp)
+        tmp.close()
+        tmp_unpacked = path = tmp.name
+    try:
+        return _scan_file(path, workers)
+    finally:
+        if tmp_unpacked:
+            os.unlink(tmp_unpacked)
+
+
+def _scan_file(path, workers=None):
     size = max(os.path.getsize(path), 1)
     fmt = sniff_format(path)
     tpl_state = _train_templates(path, fmt)
