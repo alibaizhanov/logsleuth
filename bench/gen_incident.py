@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Генератор синтетического инцидента для теста logsleuth."""
+"""Synthetic demo incident for logsleuth: a deploy silently shrinks the
+Postgres connection pool (50 -> 10) -> acquire timeouts -> retry storm with
+backoff disabled -> OOM kill. The needle is one INFO deploy line among ~4k lines."""
 import random
 from datetime import datetime, timedelta
 
@@ -22,18 +24,18 @@ def err(dt, level, msg):
     lines.append(f"{ts(dt)} {level} payment-service {msg}")
 
 
-# Фаза 0: нормальная работа, 02:10–02:47
+# Phase 0: normal operation, 02:10-02:47
 while t < datetime(2026, 8, 3, 2, 47):
     info(t, f"handled {random.choice(ROUTES)} status=200 latency={random.randint(18,90)}ms rid={random.choice(IDS)}")
     if random.random() < 0.03:
         info(t, f"pg pool: in_use={random.randint(4,12)}/50 idle={random.randint(30,44)}")
     t += timedelta(seconds=random.uniform(0.5, 3))
 
-# Деплой в 02:47
+# The deploy at 02:47
 info(t, "deployment finished: payment-service v2.14.0 (config: PG_POOL_MAX=10, was 50)  commit=9f3ab21")
 t += timedelta(seconds=5)
 
-# Фаза 1: деградация 02:47–02:55 — пул мал, латентность растёт
+# Phase 1: degradation 02:47-02:55 — pool too small, latency climbs
 while t < datetime(2026, 8, 3, 2, 55):
     r = random.random()
     if r < 0.5:
@@ -44,7 +46,7 @@ while t < datetime(2026, 8, 3, 2, 55):
         err(t, "ERROR", f"pg pool timeout after 2000ms acquiring connection rid={random.choice(IDS)} route={random.choice(ROUTES[:2])}")
     t += timedelta(seconds=random.uniform(0.2, 1.2))
 
-# Фаза 2: каскад 02:55–03:05 — таймауты, ретраи, 5xx, thundering herd
+# Phase 2: cascade 02:55-03:05 — timeouts, retries, 5xx, thundering herd
 while t < datetime(2026, 8, 3, 3, 5):
     r = random.random()
     if r < 0.35:
@@ -63,7 +65,7 @@ while t < datetime(2026, 8, 3, 3, 5):
         info(t, f"handled /healthz status=200 latency={random.randint(1,9)}ms")
     t += timedelta(seconds=random.uniform(0.1, 0.8))
 
-# Фаза 3: OOM 03:05–03:09 — очередь ретраев съела память
+# Phase 3: OOM 03:05-03:09 — the retry queue eats all memory
 while t < datetime(2026, 8, 3, 3, 9):
     r = random.random()
     if r < 0.4:

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Четыре коварных сценария для бенчмарка logsleuth.
+"""Four adversarial scenarios for the logsleuth benchmark.
 
-Каждый пишет scenario_N.log и печатает GROUND TRUTH (правильный ответ)
-в scenarios_truth.md — для честной оценки попаданий.
-"""
+Each writes scenario_N.log and appends the GROUND TRUTH (correct answer)
+to scenarios_truth.md for honest grading."""
 import random
 from datetime import datetime, timedelta
 
@@ -15,9 +14,9 @@ def ts(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{random.randint(0,999):03d}Z"
 
 
-# ---------- Сценарий 1: утечка памяти БЕЗ OOM-строки ----------
-# Иголка: включённый debug-кеш после включения фича-флага, heap растёт,
-# GC-паузы удлиняются, латентность деградирует. Никакого OOM/FATAL.
+# ---------- Scenario 1: memory leak with NO OOM line ----------
+# Needle: a runtime feature flag enables a debug cache; heap grows, GC pauses
+# lengthen, latency degrades. No OOM/FATAL anywhere.
 def scenario1():
     lines = []
     t = datetime(2026, 8, 4, 9, 0)
@@ -44,13 +43,13 @@ def scenario1():
                 lines.append(f"{ts(t)} INFO  search-api healthcheck ok")
     with open("scenario_1.log", "w") as f:
         f.write("\n".join(lines) + "\n")
-    TRUTH.append("Scenario 1: root cause = включённый в рантайме фича-флаг result_cache_debug, который хранит полные копии ответов → кеш неограниченно растёт (см. cache: entries/bytes), heap растёт, GC-паузы удлиняются, латентность деградирует. OOM ещё не случился. Правильный ответ должен указать на флаг/кеш, а не просто 'утечка памяти'.")
+    TRUTH.append("Scenario 1: root cause = the runtime feature flag result_cache_debug, which keeps full response copies -> the cache grows without bound (see cache: entries/bytes), heap grows, GC pauses lengthen, latency degrades. No OOM yet. A correct answer must point at the flag/cache, not just say 'memory leak'.")
 
 
-# ---------- Сценарий 2: дедлок без слова deadlock ----------
-# Иголка: после миграции добавлен второй advisory lock; воркеры берут
-# lock A и B в разном порядке, зависают попарно. В логах — только
-# 'still waiting for lock' и рост in-flight, слово deadlock не встречается.
+# ---------- Scenario 2: a deadlock that never says 'deadlock' ----------
+# Needle: a migration adds a second advisory lock; workers acquire A and B
+# in opposite orders and hang pairwise. Logs only show 'still waiting for lock'
+# and growing in-flight counts — the word deadlock never appears.
 def scenario2():
     lines = []
     t = datetime(2026, 8, 4, 14, 20)
@@ -68,12 +67,12 @@ def scenario2():
     lines.append(f"{ts(t)} ERROR billing-worker queue depth 18400 exceeds limit, new jobs rejected")
     with open("scenario_2.log", "w") as f:
         f.write("\n".join(lines) + "\n")
-    TRUTH.append("Scenario 2: root cause = дедлок из-за несогласованного порядка взятия advisory-локов после миграции 0142: job=charge берёт invoice→ждёт ledger, job=reconcile берёт ledger→ждёт invoice. Ответ должен назвать взаимную блокировку/порядок локов, миграцию как триггер.")
+    TRUTH.append("Scenario 2: root cause = a deadlock from inconsistent advisory-lock ordering after migration 0142: job=charge takes invoice then waits for ledger, job=reconcile takes ledger then waits for invoice. Must name the mutual blocking / lock ordering, with the migration as the trigger.")
 
 
-# ---------- Сценарий 3: мигающий DNS ----------
-# Иголка: после ротации нод кластера у одной из трёх нод резолвер смотрит
-# на выведенный из эксплуатации DNS 10.0.0.53; ошибки только с pod-ов ноды node-7.
+# ---------- Scenario 3: intermittent DNS ----------
+# Needle: after a node rotation one of three nodes resolves via the
+# decommissioned DNS 10.0.0.53; errors come only from pods on node-7.
 def scenario3():
     lines = []
     t = datetime(2026, 8, 4, 18, 5)
@@ -94,13 +93,13 @@ def scenario3():
             lines.append(f"{ts(t)} INFO  api pod={pod} node={node} handled /v1/pay status=200 latency={random.randint(30,120)}ms")
     with open("scenario_3.log", "w") as f:
         f.write("\n".join(lines) + "\n")
-    TRUTH.append("Scenario 3: root cause = после ротации нод node-7 получил legacy nameserver 10.0.0.53 (выведенный DNS): все ошибки резолва только у pod-ов на node-7, остальные ноды здоровы. Ответ должен локализовать проблему до node-7 + указать legacy DNS из строки про ротацию.")
+    TRUTH.append("Scenario 3: root cause = after the node rotation, node-7 got the legacy nameserver 10.0.0.53 (decommissioned DNS): all resolution errors come from pods on node-7 only, other nodes are healthy. Must localize to node-7 and cite the legacy DNS from the rotation line.")
 
 
-# ---------- Сценарий 4: красная селёдка ----------
-# Шум: тысячи громких, но безобидных ошибок 'metrics-exporter 404' и
-# 'TLS handshake error from scanner'. Реальная причина: диск заполнен на
-# db-нode → fsync медленный → коммиты зависают. Тихие строки про disk.
+# ---------- Scenario 4: the red herring ----------
+# Noise: thousands of loud but harmless 'metrics-exporter 404' and
+# 'TLS handshake error from scanner' lines. The real cause: the db node's disk
+# fills up -> slow fsync -> stuck commits. The disk lines are quiet.
 def scenario4():
     lines = []
     t = datetime(2026, 8, 4, 22, 40)
@@ -131,7 +130,7 @@ def scenario4():
     lines.append(f"{ts(t)} ERROR orders-api transaction aborted: server closed the connection unexpectedly")
     with open("scenario_4.log", "w") as f:
         f.write("\n".join(lines) + "\n")
-    TRUTH.append("Scenario 4: root cause = заполнившийся диск на db-1 (/var/lib/postgresql, node-exporter показывает рост к 99.8%) → медленные checkpoint/fsync → зависшие коммиты → 'No space left on device'. Громкие ошибки metrics-exporter 404 и TLS handshake — шум/красная селёдка, их надо явно отвергнуть.")
+    TRUTH.append("Scenario 4: root cause = the disk filling up on db-1 (/var/lib/postgresql, node-exporter shows growth to 99.8%) -> slow checkpoint/fsync -> stuck commits -> 'No space left on device'. The loud metrics-exporter 404 and TLS handshake errors are noise/red herrings and must be explicitly ruled out.")
 
 
 scenario1(); scenario2(); scenario3(); scenario4()

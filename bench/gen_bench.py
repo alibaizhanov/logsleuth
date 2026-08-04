@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Слепой бенчмарк: 10 новых типов отказов, которых logsleuth v2 не видел.
-Код logsleuth заморожен ДО генерации этих сценариев."""
+"""Blind benchmark: 10 failure types logsleuth v2 had never seen.
+The logsleuth code was FROZEN BEFORE these scenarios were generated."""
 import random
 from datetime import datetime, timedelta
 
@@ -25,7 +25,7 @@ def noise(dt, svc="api", n=1):
     return out
 
 
-# 1. Kafka rebalance storm: у консьюмера c-3 длинные GC-паузы -> вылетает из группы -> вечный ребаланс, лаг растёт
+# 1. Kafka rebalance storm: consumer c-3 has long GC pauses -> gets kicked from the group -> endless rebalances, lag grows
 def s1():
     L, t = [], datetime(2026, 8, 4, 11, 0)
     for i in range(900):
@@ -42,10 +42,10 @@ def s1():
             L.append(f"{ts(t)} INFO  kafka group orders-cg rebalance complete generation={i}")
         else:
             L.append(f"{ts(t)} WARN  kafka consumer lag topic=orders partition={random.randint(0,11)} lag={2000 + i*40}")
-    write("bench_01.log", L, "root cause = GC-паузы 9-16s только у консьюмера c-3 превышают session.timeout 10s -> его выкидывает -> бесконечные ребалансы группы -> лаг растёт. Должен назвать c-3 и GC/таймаут, а не 'Kafka сломался'.")
+    write("bench_01.log", L, "root cause = 9-16s GC pauses on consumer c-3 only, exceeding session.timeout of 10s -> it gets kicked from the group -> endless group rebalances -> lag grows. Must name c-3 and GC/timeout, not just 'Kafka is broken'.")
 
 
-# 2. Истёкший TLS-сертификат: ошибки начинаются ровно в момент истечения
+# 2. Expired TLS certificate: errors start exactly at expiry time
 def s2():
     L, t = [], datetime(2026, 8, 4, 9, 30)
     L.append(f"{ts(t)} INFO  gateway loaded cert for api.corp.com serial=4f:2a notAfter=2026-08-04T10:00:00Z")
@@ -57,10 +57,10 @@ def s2():
             L.append(f"{ts(t)} ERROR gateway TLS handshake failed client={random.randint(1,99)}: x509: certificate has expired or is not yet valid")
         else:
             L.append(f"{ts(t)} WARN  upstream-monitor api.corp.com probe failed: ssl verification error")
-    write("bench_02.log", L, "root cause = сертификат api.corp.com истёк в 10:00 (notAfter совпадает с началом ошибок). Должен связать notAfter и момент начала ошибок.")
+    write("bench_02.log", L, "root cause = the api.corp.com certificate expired at 10:00 (notAfter matches the error onset exactly). Must connect notAfter with the moment errors start.")
 
 
-# 3. Clock skew: на api-2 уехали часы, токены 'used before issued' только там
+# 3. Clock skew: api-2's clock drifted; 'used before issued' tokens only there
 def s3():
     L, t = [], datetime(2026, 8, 4, 13, 0)
     L.append(f"{ts(t)} WARN  ntpd host=api-2 no server suitable for synchronization found, drift 187s")
@@ -71,10 +71,10 @@ def s3():
             L.append(f"{ts(t)} ERROR auth host={h} jwt validation failed: token used before issued (iat in future)")
         else:
             L.append(f"{ts(t)} INFO  auth host={h} token issued ok uid=<{random.randint(1,9)}>")
-    write("bench_03.log", L, "root cause = clock skew на api-2 (ntpd drift 187s, нет синхронизации) -> jwt 'iat in future' только на api-2. Должен локализовать до api-2 и назвать рассинхрон часов/NTP.")
+    write("bench_03.log", L, "root cause = clock skew on api-2 (ntpd drift 187s, no sync) -> jwt 'iat in future' errors only on api-2. Must localize to api-2 and name clock/NTP desync.")
 
 
-# 4. Redis maxmemory урезали конфигом: hit rate падает, БД захлёбывается
+# 4. Redis maxmemory slashed by config: hit rate collapses, the DB drowns
 def s4():
     L, t = [], datetime(2026, 8, 4, 15, 40)
     hit = 0.97
@@ -97,10 +97,10 @@ def s4():
                 L.append(f"{ts(t)} WARN  postgres connections active={random.randint(140,190)}/200 slow queries={random.randint(5,60)}")
             else:
                 L.append(f"{ts(t)} INFO  postgres connections active={random.randint(20,45)}/200")
-    write("bench_04.log", L, "root cause = CONFIG SET maxmemory 512mb (было 8gb) от config-sync -> массовые evictions, hit rate 0.97->0.31 -> нагрузка ушла в Postgres, латентность выросла. Должен назвать смену maxmemory.")
+    write("bench_04.log", L, "root cause = CONFIG SET maxmemory 512mb (was 8gb) applied by config-sync -> mass evictions, hit rate 0.97->0.31 -> load shifts to Postgres, latency grows. Must name the maxmemory change.")
 
 
-# 5. Ночной бэкап сатурирует диск: запросы тормозят строго в окно бэкапа
+# 5. Nightly backup saturates the disk: queries slow down exactly in the backup window
 def s5():
     L, t = [], datetime(2026, 8, 4, 1, 30)
     for i in range(900):
@@ -119,10 +119,10 @@ def s5():
             L.append(f"{ts(t)} WARN  orders query exceeded slow-log threshold: SELECT ... FOR UPDATE waited {random.randint(1000,6000)}ms")
         else:
             L += noise(t, "orders")
-    write("bench_05.log", L, "root cause = ночной pg_basebackup (02:00-02:40) сатурирует диск db-1 (io_util ~100%, read_wait сотни ms) -> медленные запросы строго в окне бэкапа. Должен связать окно деградации с бэкапом.")
+    write("bench_05.log", L, "root cause = the nightly pg_basebackup (02:00-02:40) saturating db-1's disk (io_util ~100%, read_wait hundreds of ms) -> slow queries strictly within the backup window. Must connect the degradation window with the backup.")
 
 
-# 6. Утечка коннекшенов после апгрейда библиотеки
+# 6. Connection leak after a library upgrade
 def s6():
     L, t = [], datetime(2026, 8, 4, 16, 0)
     conns = 12
@@ -139,10 +139,10 @@ def s6():
             L.append(f"{ts(t)} ERROR inventory-svc connect to warehouse-api failed: too many open files (EMFILE)")
         else:
             L.append(f"{ts(t)} INFO  inventory-svc fd_count={int(1000 + conns*4)}")
-    write("bench_06.log", L, "root cause = после апгрейда http-client 4->5 соединения не переиспользуются/не закрываются (established и idle_never_closed растут монотонно) -> исчерпание fd (EMFILE). Должен назвать апгрейд библиотеки и утечку соединений.")
+    write("bench_06.log", L, "root cause = after the http-client 4->5 upgrade connections are not reused/closed (established and idle_never_closed grow monotonically) -> fd exhaustion (EMFILE). Must name the library upgrade and the connection leak.")
 
 
-# 7. Третья сторона включила rate limit после переключения трафика
+# 7. Third party starts rate limiting after a traffic cutover
 def s7():
     L, t = [], datetime(2026, 8, 4, 12, 0)
     L.append(f"{ts(t)} INFO  traffic cutover complete: region eu-1 now routes through provider=paylink (volume x2.1)")
@@ -156,10 +156,10 @@ def s7():
             L.append(f"{ts(t)} {'ERROR' if code==429 else 'INFO '} checkout paylink POST /charge status={code}{' Retry-After=30' if code==429 else ''} latency={random.randint(80,300)}ms")
         else:
             L.append(f"{ts(t)} WARN  checkout retry scheduled attempt={random.randint(1,6)} reason=rate_limited provider=paylink")
-    write("bench_07.log", L, "root cause = после cutover объём на провайдера paylink вырос x2.1 -> paylink отвечает 429 (Retry-After), ретраи усугубляют. Должен связать cutover c 429/rate limit, а не винить сеть.")
+    write("bench_07.log", L, "root cause = after the cutover, volume to provider paylink grew x2.1 -> paylink responds 429 (Retry-After), retries amplify. Must connect the cutover with the 429/rate limit, not blame the network.")
 
 
-# 8. Синхронное логирование на затормозивший NFS душит тред-пул
+# 8. Synchronous logging to a stalled NFS starves the thread pool
 def s8():
     L, t = [], datetime(2026, 8, 4, 17, 30)
     L.append(f"{ts(t)} INFO  reports-svc log sink changed: /var/log/local -> nfs://logstore/reports (sync mode)")
@@ -178,10 +178,10 @@ def s8():
             L.append(f"{ts(t)} WARN  reports-svc request timed out waiting for worker thread (all busy in log_write)")
         else:
             L += noise(t, "reports-svc")
-    write("bench_08.log", L, "root cause = лог-синк переключён на NFS в sync-режиме; NFS-сервер тормозит (op WRITE timeout) -> все 40 тредов застревают в log_write -> тред-пул исчерпан, запросы таймаутят. Должен назвать NFS/синхронное логирование, а не 'сервис медленный'.")
+    write("bench_08.log", L, "root cause = the log sink switched to NFS in sync mode; the NFS server stalls (op WRITE timeout) -> all 40 threads stuck in log_write -> thread pool exhausted, requests time out. Must name NFS/synchronous logging, not just 'the service is slow'.")
 
 
-# 9. Плохая канарейка: 500-е только у build=9e1c77
+# 9. Bad canary: 500s only on build=9e1c77
 def s9():
     L, t = [], datetime(2026, 8, 4, 19, 15)
     L.append(f"{ts(t)} INFO  canary rollout: 10% traffic -> build=9e1c77 (main build=5b0a12)")
@@ -193,10 +193,10 @@ def s9():
             L.append(f"{ts(t)} ERROR web build={b} unhandled NullPointerException in PriceFormatter.apply(discount=null) status=500")
         else:
             L.append(f"{ts(t)} INFO  web build={b} handled /product status=200 latency={random.randint(25,95)}ms")
-    write("bench_09.log", L, "root cause = канареечный build=9e1c77: NPE в PriceFormatter при discount=null, все 500-е только на канарейке (10% трафика), main build здоров. Должен локализовать до build=9e1c77 и предложить откат канарейки.")
+    write("bench_09.log", L, "root cause = canary build=9e1c77: NPE in PriceFormatter with discount=null, all 500s only on the canary (10% of traffic), the main build is healthy. Must localize to build=9e1c77 and suggest rolling back the canary.")
 
 
-# 10. Envoy-сайдкар: flapping service discovery -> реконфиг каждые 2s -> рост RSS
+# 10. Envoy sidecar: flapping service discovery -> reconfig every 2s -> RSS growth
 def s10():
     L, t = [], datetime(2026, 8, 4, 20, 40)
     rss = 180
@@ -214,7 +214,7 @@ def s10():
             L.append(f"{ts(t)} WARN  envoy upstream search-backend 503 no_healthy_upstream burst={random.randint(2,30)}")
         else:
             L += noise(t, "search")
-    write("bench_10.log", L, "root cause = health-check flapping инстанса i-04 (tcp timeout 1s < warmup 3s) -> envoy пересобирает конфиг каждые ~2s -> RSS envoy растёт (180->900MB) + всплески 503 no_healthy_upstream. Идеальный ответ называет flapping health-check как первопричину, envoy-память как следствие.")
+    write("bench_10.log", L, "root cause = health-check flapping of instance i-04 (tcp check timeout 1s < app warmup 3s) -> envoy rebuilds config every ~2s -> envoy RSS grows (180->900MB) + bursts of 503 no_healthy_upstream. The ideal answer names the flapping health check as the first cause and envoy memory as a consequence.")
 
 
 for f in (s1, s2, s3, s4, s5, s6, s7, s8, s9, s10):
