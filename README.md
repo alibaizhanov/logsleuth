@@ -38,6 +38,12 @@ Confidence: High.
   read once in byte-range chunks across CPU cores and only aggregates are kept, so
   a 2GB log costs the same RAM as a 2MB one. (Measured: 2M lines in 3.1s / 21MB on
   an M1 Pro; a naive in-memory pass took 29s and 788MB.)
+- **Templates learned, not guessed.** Line grouping uses a Drain-style parse tree
+  (ours, pure stdlib): variable parts are found *positionally* — block ids,
+  hostnames, usernames, paths — instead of matching a list of "looks like data"
+  regexes. Measured on [LogHub](https://github.com/logpai/loghub), 16 real
+  systems with human-annotated templates: **79.6% grouping accuracy**, up from
+  61% before (published parsers land around 86%). `bench/loghub_ga.py` reproduces it.
 - **No keyword lists to maintain.** State changes are found *structurally*: a
   deploy, an eviction or a leader switch is a near-unique line in a file where
   normal operation repeats thousands of times. Rare + shortly-before-the-first-error

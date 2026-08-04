@@ -11,6 +11,7 @@ import tempfile
 from collections import Counter, defaultdict, deque
 from concurrent.futures import ProcessPoolExecutor
 
+from .drain import Drain
 from .parse import is_continuation, parse_line, sniff
 
 CHANGE_PAT = re.compile(
@@ -53,7 +54,8 @@ def _decimate(pts, cap=SERIES_CAP):
 
 def _scan_range(args):
     """Scan one byte range. Returns picklable aggregates only."""
-    path, start, end, size, fmt = args
+    path, start, end, size, fmt, tpl_state = args
+    miner = Drain.from_state(tpl_state) if tpl_state else None
     templates = {}
     series = defaultdict(list)
     dims_err, cand = defaultdict(Counter), defaultdict(set)
@@ -89,7 +91,7 @@ def _scan_range(args):
 
             ts, level, msg, fields = parse_line(line, fmt)
             probe = f"{level or ''} {msg}"
-            tpl = normalize(probe)
+            tpl = miner.match(probe) if miner else normalize(probe)
             last_tpl = tpl
             st = templates.get(tpl)
             if st is None:
@@ -201,6 +203,28 @@ def spool_stdin(stream):
     return tmp.name
 
 
+TRAIN_LINES = 20_000
+
+
+def _train_templates(path, fmt, n=TRAIN_LINES):
+    """Learn line templates from a sample, then freeze them for the workers.
+
+    Templates stabilize quickly, so a sample is enough — and a frozen model keeps
+    the parallel scan cheap and deterministic.
+    """
+    miner = Drain()
+    with open(path, errors="replace") as fh:
+        for i, line in enumerate(fh):
+            if i >= n:
+                break
+            line = line.rstrip("\n")
+            if not line.strip() or is_continuation(line):
+                continue
+            _, level, msg, _ = parse_line(line, fmt)
+            miner.train(f"{level or ''} {msg}")
+    return miner.state()
+
+
 def sniff_format(path, n=60):
     with open(path, errors="replace") as fh:
         sample = [fh.readline() for _ in range(n)]
@@ -211,16 +235,17 @@ def scan(path, workers=None):
     """Scan a log file. Parallel across cores for large files, flat memory always."""
     size = max(os.path.getsize(path), 1)
     fmt = sniff_format(path)
+    tpl_state = _train_templates(path, fmt)
     if workers is None:
         workers = max(1, (os.cpu_count() or 2) - 1)
     if size < PARALLEL_MIN_BYTES:
         workers = 1
 
     if workers == 1:
-        parts = [_scan_range((path, 0, size, size, fmt))]
+        parts = [_scan_range((path, 0, size, size, fmt, tpl_state))]
     else:
         step = size // workers
-        ranges = [(path, i * step, size if i == workers - 1 else (i + 1) * step, size, fmt)
+        ranges = [(path, i * step, size if i == workers - 1 else (i + 1) * step, size, fmt, tpl_state)
                   for i in range(workers)]
         with ProcessPoolExecutor(max_workers=workers) as pool:
             parts = list(pool.map(_scan_range, ranges))
