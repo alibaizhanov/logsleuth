@@ -8,12 +8,16 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
 from collections import Counter, defaultdict
 
+TS_PAT = re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})")
+
 from . import __version__, render
+from .scan import build_pack, scan, spool_stdin
 
 OLLAMA_URL = os.environ.get("LOGSLEUTH_OLLAMA_URL", "http://localhost:11434")
 DEFAULT_MODEL = os.environ.get("LOGSLEUTH_MODEL", "qwen3:8b")
@@ -46,151 +50,6 @@ def die(msg: str, hint: str = "") -> None:
     if hint:
         sys.stderr.write(f"{hint}\n")
     sys.exit(1)
-
-
-# ---------------- preprocessing (deterministic, local) ----------------
-
-def normalize(line: str) -> str:
-    """Collapse a log line to its template so identical events group together.
-
-    Order matters: strip timestamps FIRST, otherwise digit substitution mangles
-    them and every second becomes its own 'unique' template.
-    """
-    line = TS_PAT.sub("<ts>", line)
-    line = re.sub(r"\d{1,2}:\d{2}:\d{2}(?:[.,]\d+)?Z?", "<t>", line)   # any remaining clock
-    line = re.sub(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<uuid>", line, flags=re.I)
-    line = re.sub(r"\b\d+\.\d+\.\d+\.\d+\b", "<ip>", line)
-    line = re.sub(r"<\d+>", "<id>", line)
-    line = re.sub(r"0x[0-9a-f]+", "<hex>", line, flags=re.I)
-    line = re.sub(r"\d+", "<n>", line)                                 # every number, boundaries unreliable next to Z/ms
-    return line.strip()
-
-
-def preprocess(text: str) -> dict:
-    lines = text.splitlines()
-    total = max(len(lines), 1)
-    sig_idx = [i for i, l in enumerate(lines) if SIGNAL_PAT.search(l)]
-
-    pat_stats = {}
-    for i in sig_idx:
-        p = normalize(lines[i])
-        st = pat_stats.setdefault(p, {"count": 0, "first": i, "last": i})
-        st["count"] += 1
-        st["last"] = i
-    patterns = []
-    for p, st in sorted(pat_stats.items(), key=lambda kv: -kv[1]["count"])[:18]:
-        first_pct = round(100 * st["first"] / total)
-        note = ("PRESENT FROM FILE START — likely pre-existing baseline noise"
-                if first_pct <= 3 else f"first appears at {first_pct}% of file")
-        patterns.append(f"{st['count']:6d}x  [{note}]  {p[:180]}")
-
-    # --- Rare-event detection (vocabulary-free) ---------------------------------
-    # Normal operation repeats: "handled request" appears thousands of times.
-    # A state change — a deploy, an eviction, a migration, a leader switch — is
-    # structurally near-unique. So we rank by RARITY, not by keywords, which
-    # generalizes across stacks, vendors and phrasings. Known change words only
-    # act as a score boost, never as a gate.
-    all_tpl = {}
-    for i, l in enumerate(lines):
-        if not l.strip():
-            continue
-        st = all_tpl.setdefault(normalize(l), {"count": 0, "first": i, "line": l.strip()})
-        st["count"] += 1
-
-    onset_idx = None
-    for i in sig_idx:
-        if pat_stats.get(normalize(lines[i]), {}).get("first", 0) / total > 0.03:
-            onset_idx = i
-            break
-    if onset_idx is None and sig_idx:
-        onset_idx = sig_idx[0]
-
-    rare_max = max(3, int(total * 0.002))
-    scored = []
-    for tpl, st in all_tpl.items():
-        if st["count"] > rare_max:
-            continue
-        i = st["first"]
-        score = 3.0 / (st["count"] + 1)                      # rarer = more suspicious
-        if onset_idx is not None:
-            gap = (onset_idx - i) / total
-            if 0 <= gap < 0.35:
-                score += 3.0 * (1 - gap / 0.35)              # shortly BEFORE the incident
-            elif gap < 0:
-                score += 0.4                                  # during/after: still notable
-        if CHANGE_PAT.search(st["line"]):
-            score += 1.5                                      # known change vocabulary: a hint
-        if SIGNAL_PAT.search(st["line"]):
-            score -= 0.8                                      # errors already have their own section
-        scored.append((score, i, st["count"], st["line"]))
-    scored.sort(key=lambda x: -x[0])
-
-    changes, change_pcts = [], []
-    for _, i, cnt, line in scored[:18]:
-        seen = f" (x{cnt} in file)" if cnt > 1 else ""
-        rel = ""
-        if onset_idx is not None:
-            rel = " BEFORE first incident signal" if i < onset_idx else " after incident started"
-        changes.append(f"(line {i+1}, {round(100*i/total)}% of file{seen}{rel}) {line[:220]}")
-        change_pcts.append(100 * i / total)
-
-    series = defaultdict(list)
-    for i, l in enumerate(lines):
-        for key, val, unit in NUM_PAT.findall(l):
-            if key.lower() in ("rid", "id", "txid", "commit", "status", "retry"):
-                continue
-            series[(key, unit)].append((i, float(val)))
-    trends = []
-    for (key, unit), pts in series.items():
-        if len(pts) < 12:
-            continue
-        q = max(len(pts) // 4, 1)
-        head = sum(v for _, v in pts[:q]) / q
-        tail = sum(v for _, v in pts[-q:]) / q
-        if head == 0 and tail == 0:
-            continue
-        ratio = (tail + 1e-9) / (head + 1e-9)
-        if ratio >= 1.5 or ratio <= 0.66:
-            direction = "GREW" if ratio > 1 else "DROPPED"
-            trends.append((abs(ratio if ratio > 1 else 1 / ratio),
-                           f"{key}: {direction} {head:.1f}{unit} -> {tail:.1f}{unit} "
-                           f"(x{ratio:.1f}, {len(pts)} samples across file)",
-                           (f"{key} {head:.0f}→{tail:.0f}{unit}",
-                            [v for _, v in pts], "up" if ratio > 1 else "down")))
-    trends.sort(key=lambda x: -x[0])
-    trend_series = [t[2] for t in trends[:12]]
-    trends = [t[1] for t in trends[:12]]
-
-    sig_set = set(sig_idx)
-    dims_err, dims_all = defaultdict(Counter), defaultdict(set)
-    for i, l in enumerate(lines):
-        for dim, val in DIM_PAT.findall(l):
-            dims_all[dim].add(val)
-            if i in sig_set:
-                dims_err[dim][val] += 1
-    dim_notes = []
-    for dim, cnt in dims_err.items():
-        top, top_n = cnt.most_common(1)[0]
-        share = top_n / sum(cnt.values())
-        universe = dims_all[dim]
-        if share > 0.7 and len(universe) > 1:
-            healthy = sorted(universe - {top})[:4]
-            others = (", ".join(v for v, _ in cnt.most_common()[1:4])
-                      or f"none — {', '.join(healthy)} are error-free")
-            dim_notes.append(f"{dim}: {round(share*100)}% of all error-like lines have {dim}={top} "
-                             f"(other values: {others})")
-
-    windows = []
-    if sig_idx:
-        onset = next((i for i in sig_idx if pat_stats[normalize(lines[i])]["first"] / total > 0.03), sig_idx[0])
-        windows.append("\n".join(lines[max(0, onset - 15):onset + 15]))
-        last = sig_idx[-1]
-        if last - onset > 40:
-            windows.append("\n".join(lines[max(0, last - 15):last + 15]))
-
-    return {"total_lines": total, "signal_lines": len(sig_idx), "patterns": patterns,
-            "changes": changes, "trends": trends, "dim_notes": dim_notes, "windows": windows,
-            "sig_positions": sig_idx, "change_pcts": change_pcts, "trend_series": trend_series}
 
 
 PROMPT = """You are an experienced SRE doing incident root-cause analysis from preprocessed log evidence.
@@ -305,48 +164,48 @@ def analyze_stream(prompt: str, model: str):
 
 # ---------------- input handling ----------------
 
-def read_inputs(paths):
+def resolve_input(paths):
+    """Return a path to scan. stdin is spooled; several files are merged to a temp file."""
     if len(paths) == 1:
         p = paths[0]
         if p == "demo":
-            demo = os.path.join(os.path.dirname(__file__), "data", "demo_incident.log")
-            status("demo mode: analyzing a bundled realistic incident "
+            status("demo mode: a bundled realistic incident "
                    "(a deploy shrinks a Postgres pool -> timeouts -> retry storm -> OOM)")
-            return open(demo, errors="replace").read()
+            return os.path.join(os.path.dirname(__file__), "data", "demo_incident.log"), None
         if p == "-":
-            return sys.stdin.read()
-        try:
-            return open(p, errors="replace").read()
-        except OSError as e:
-            die(str(e))
+            return spool_stdin(sys.stdin), None
+        if not os.path.exists(p):
+            die(f"no such file: {p}")
+        return p, None
 
-    # Multiple files: tag every line with its source and merge chronologically.
-    # Lines without a timestamp (tracebacks, continuations) inherit the previous
-    # line's timestamp from the same file, so stack traces stay attached.
+    # Multiple files: tag each line with its source and merge chronologically, so
+    # the source file becomes an analysis dimension (src=…) the model can use.
     entries, seq, ts_hits, total = [], 0, 0, 0
     for p in paths:
         try:
-            raw = open(p, errors="replace").read()
+            fh = open(p, errors="replace")
         except OSError as e:
             die(str(e))
-        src = os.path.basename(p)
-        last_ts = ""
-        for line in raw.splitlines():
-            m = TS_PAT.match(line)
-            if m:
-                last_ts = m.group(1)
-                ts_hits += 1
-            total += 1
-            entries.append((last_ts, seq, f"{line} src={src}"))
-            seq += 1
+        src, last_ts = os.path.basename(p), ""
+        with fh:
+            for line in fh:
+                line = line.rstrip("\n")
+                m = TS_PAT.match(line)
+                if m:
+                    last_ts = m.group(1)
+                    ts_hits += 1
+                total += 1
+                entries.append((last_ts, seq, f"{line} src={src}"))
+                seq += 1
     if total and ts_hits / total > 0.5:
         entries.sort(key=lambda e: (e[0], e[1]))
-        status(f"merged {len(paths)} files ({total:,} lines) chronologically; "
-               f"source file is an analysis dimension (src=…)")
+        status(f"merged {len(paths)} files ({total:,} lines) chronologically; source is a dimension (src=…)")
     else:
-        status(f"concatenated {len(paths)} files ({total:,} lines) — too few timestamps to merge; "
-               f"source file is an analysis dimension (src=…)")
-    return "\n".join(e[2] for e in entries)
+        status(f"concatenated {len(paths)} files ({total:,} lines); source is a dimension (src=…)")
+    tmp = tempfile.NamedTemporaryFile("w", suffix=".log", delete=False)
+    tmp.write("\n".join(e[2] for e in entries))
+    tmp.close()
+    return tmp.name, tmp.name
 
 
 # ---------------- CLI ----------------
@@ -366,13 +225,16 @@ def main() -> None:
     ap.add_argument("--version", action="version", version=f"logsleuth {__version__}")
     args = ap.parse_args()
 
-    text = read_inputs(args.logfiles)
-    if not text.strip():
+    path, tmp = resolve_input(args.logfiles)
+    t_scan = time.monotonic()
+    s = build_pack(scan(path))
+    if tmp:
+        os.unlink(tmp)
+    if not s["total_lines"]:
         die("input is empty")
-
-    s = preprocess(text)
-    status(f"{s['total_lines']} lines | {s['signal_lines']} signal | "
-           f"{len(s['changes'])} change events | {len(s['trends'])} trends")
+    cores = f" on {s['workers']} cores" if s.get("workers", 1) > 1 else ""
+    status(f"scanned {s['total_lines']:,} lines in {time.monotonic() - t_scan:.1f}s{cores} | "
+           f"{s['signal_lines']:,} signal | {len(s['changes'])} rare events | {len(s['trends'])} trends")
     prompt = build_prompt(s)
 
     if args.dry_run:

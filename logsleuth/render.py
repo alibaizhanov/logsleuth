@@ -76,11 +76,11 @@ def render_header(stats, model, width=76):
     o.append(f"{GREY}│{RESET} {DIM}{stats['total_lines']:,} lines · {stats['signal_lines']:,} signal · "
              f"{len(stats.get('changes', []))} change events · model {model}{RESET}")
     o.append(f"{GREY}╰{bar}╯{RESET}")
-    pos = stats.get("sig_positions") or []
-    if pos:
+    hist = stats.get("density") or []
+    if any(hist):
         o.append("")
         o.append(f" {BOLD}INCIDENT MAP{RESET} {DIM}(error density across the file){RESET}")
-        o.append(f"   {heat_color(density_map(pos, stats['total_lines']))}")
+        o.append(f"   {heat_color(sparkline(hist, len(hist)))}")
         pcts = stats.get("change_pcts") or []
         if pcts:
             o.append(f"   {MAGENTA}{marker_row(pcts)}{RESET}  {DIM}▼ = deploy/config/migration{RESET}")
