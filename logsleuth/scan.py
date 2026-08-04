@@ -11,6 +11,8 @@ import tempfile
 from collections import Counter, defaultdict, deque
 from concurrent.futures import ProcessPoolExecutor
 
+from .parse import is_continuation, parse_line, sniff
+
 CHANGE_PAT = re.compile(
     r"\b(deploy|deployment|migration|migrat|feature flag|flag .{0,20}enabled|config(?:uration)?"
     r"|rollout|rotation|version|commit|upgraded?|restarted?|applied|joined|drained"
@@ -51,12 +53,13 @@ def _decimate(pts, cap=SERIES_CAP):
 
 def _scan_range(args):
     """Scan one byte range. Returns picklable aggregates only."""
-    path, start, end, size = args
+    path, start, end, size, fmt = args
     templates = {}
     series = defaultdict(list)
-    dims_err, dims_all = defaultdict(Counter), defaultdict(set)
+    dims_err, cand = defaultdict(Counter), defaultdict(set)
     density = [0] * DENSITY_BUCKETS
     total = signal = 0
+    last_tpl = None
 
     with open(path, errors="replace") as fh:
         if start:
@@ -73,36 +76,60 @@ def _scan_range(args):
             total += 1
             if not line.strip():
                 continue
+            # Fold stack traces / indented continuations into the event above:
+            # they are one event, not fifty.
+            if is_continuation(line):
+                if last_tpl is not None:
+                    cont = templates.get(last_tpl)
+                    if cont and cont[4] < 6:
+                        cont[3] = (cont[3] + " | " + line.strip())[:300]
+                        cont[4] += 1
+                continue
             frac = here / size
 
-            tpl = normalize(line)
+            ts, level, msg, fields = parse_line(line, fmt)
+            probe = f"{level or ''} {msg}"
+            tpl = normalize(probe)
+            last_tpl = tpl
             st = templates.get(tpl)
             if st is None:
                 if len(templates) >= MAX_TEMPLATES:
                     continue
-                st = templates[tpl] = [0, frac, here, line.strip()[:300]]   # count, first_frac, offset, sample
+                st = templates[tpl] = [0, frac, here, line.strip()[:300], 0]  # count, frac, offset, sample, conts
             st[0] += 1
 
-            if SIGNAL_LOWER.search(line.lower()):
+            sig = (level in ("ERROR", "ERR", "FATAL", "CRIT", "CRITICAL", "PANIC", "WARN", "WARNING")
+                   if level else bool(SIGNAL_LOWER.search(probe.lower())))
+            if sig:
                 signal += 1
                 density[min(int(frac * DENSITY_BUCKETS), DENSITY_BUCKETS - 1)] += 1
-                for dim, val in DIM_PAT.findall(line):
+            # Structured fields first, then key=value pairs found in the text.
+            pairs = list(fields.items()) + [(k, v) for k, v, _ in NUM_PAT.findall(line)]
+            for k, v in pairs:
+                sv = str(v)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    num = float(v)
+                elif re.fullmatch(r"-?\d+(?:\.\d+)?", sv):
+                    num = float(sv)
+                else:
+                    num = None
+                if num is not None and k.lower() not in ("rid", "id", "txid", "commit", "status", "retry"):
+                    ser = series[(k, "")]
+                    ser.append(num)
+                    if len(ser) >= SERIES_CAP * 2:
+                        series[(k, "")] = ser[::2]
+                if num is None or k.lower() in ("shard", "partition", "build", "instance"):
+                    cand[k].add(sv[:40])
+                    if sig:
+                        dims_err[k][sv[:40]] += 1
+            for dim, val in DIM_PAT.findall(line):
+                cand[dim].add(val)
+                if sig:
                     dims_err[dim][val] += 1
-                    dims_all[dim].add(val)
-            else:
-                for dim, val in DIM_PAT.findall(line):
-                    dims_all[dim].add(val)
-
-            for key, val, unit in NUM_PAT.findall(line):
-                if key.lower() not in ("rid", "id", "txid", "commit", "status", "retry"):
-                    s = series[(key, unit)]
-                    s.append(float(val))
-                    if len(s) >= SERIES_CAP * 2:
-                        series[(key, unit)] = s[::2]
 
     return {"templates": templates, "series": {k: v for k, v in series.items()},
             "dims_err": {k: dict(v) for k, v in dims_err.items()},
-            "dims_all": {k: list(v) for k, v in dims_all.items()},
+            "dims_all": {k: list(v)[:200] for k, v in cand.items()},
             "density": density, "total": total, "signal": signal}
 
 
@@ -112,7 +139,8 @@ def _merge(parts):
     density = [0] * DENSITY_BUCKETS
     total = signal = 0
     for p in parts:                                   # parts stay in file order
-        for tpl, (cnt, frac, off, sample) in p["templates"].items():
+        for tpl, rec in p["templates"].items():
+            cnt, frac, off, sample = rec[0], rec[1], rec[2], rec[3]
             cur = templates.get(tpl)
             if cur is None:
                 templates[tpl] = [cnt, frac, off, sample]
@@ -173,19 +201,26 @@ def spool_stdin(stream):
     return tmp.name
 
 
+def sniff_format(path, n=60):
+    with open(path, errors="replace") as fh:
+        sample = [fh.readline() for _ in range(n)]
+    return sniff([l for l in sample if l])
+
+
 def scan(path, workers=None):
     """Scan a log file. Parallel across cores for large files, flat memory always."""
     size = max(os.path.getsize(path), 1)
+    fmt = sniff_format(path)
     if workers is None:
         workers = max(1, (os.cpu_count() or 2) - 1)
     if size < PARALLEL_MIN_BYTES:
         workers = 1
 
     if workers == 1:
-        parts = [_scan_range((path, 0, size, size))]
+        parts = [_scan_range((path, 0, size, size, fmt))]
     else:
         step = size // workers
-        ranges = [(path, i * step, size if i == workers - 1 else (i + 1) * step, size)
+        ranges = [(path, i * step, size if i == workers - 1 else (i + 1) * step, size, fmt)
                   for i in range(workers)]
         with ProcessPoolExecutor(max_workers=workers) as pool:
             parts = list(pool.map(_scan_range, ranges))
@@ -199,7 +234,7 @@ def scan(path, workers=None):
             if onset_frac is None or frac < onset_frac:
                 onset_frac, onset_off = frac, off
 
-    return {"path": path, "size": size, "workers": workers, "total": total, "signal": signal,
+    return {"path": path, "size": size, "workers": workers, "fmt": fmt, "total": total, "signal": signal,
             "templates": templates, "series": series, "dims_err": dims_err, "dims_all": dims_all,
             "density": density, "onset_frac": onset_frac,
             "onset_window": _window_at(path, onset_off), "tail_window": _tail(path)}
@@ -268,7 +303,8 @@ def build_pack(sc):
 
     dim_notes = []
     for dim, cnt in sc["dims_err"].items():
-        if not cnt:
+        universe_size = len(sc["dims_all"].get(dim, []))
+        if not cnt or not (2 <= universe_size <= 50):
             continue
         top, top_n = cnt.most_common(1)[0]
         share = top_n / sum(cnt.values())
@@ -287,4 +323,4 @@ def build_pack(sc):
     return {"total_lines": sc["total"], "signal_lines": sc["signal"], "patterns": patterns,
             "changes": changes, "trends": trends, "dim_notes": dim_notes, "windows": windows,
             "density": sc["density"], "change_pcts": change_pcts, "trend_series": trend_series,
-            "workers": sc["workers"]}
+            "workers": sc["workers"], "fmt": sc["fmt"]}

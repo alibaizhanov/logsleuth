@@ -28,6 +28,12 @@ Confidence: High.
 
 - **Your logs never leave the machine.** No API keys, no cloud, no data processing
   agreements, no argument with the CISO. Works air-gapped.
+- **Reads the formats you actually have.** JSON lines, logfmt, plain text —
+  sniffed automatically. Timestamps in ISO, syslog, Apache and epoch form all
+  parse. Java/Python stack traces fold into the event they belong to instead of
+  polluting the analysis as fifty separate lines. Structured fields (`level`,
+  `pod`, `latency_ms`) are used directly, and dimensions are picked by
+  cardinality — no hardcoded field list.
 - **Built for real log sizes.** Streaming, parallel, bounded memory: the file is
   read once in byte-range chunks across CPU cores and only aggregates are kept, so
   a 2GB log costs the same RAM as a 2MB one. (Measured: 2M lines in 3.1s / 21MB on
