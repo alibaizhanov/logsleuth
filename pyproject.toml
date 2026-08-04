@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loglens"
+version = "0.1.0"
+description = "Local AI root-cause analysis for production logs. Nothing leaves your machine."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Ali Baizhanov" }]
+keywords = ["logs", "root-cause", "incident", "sre", "devops", "local-llm", "ollama", "ai"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "Topic :: System :: Logging",
+    "Topic :: System :: Systems Administration",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/alibaizhanov/loglens"
+
+[project.scripts]
+loglens = "loglens.cli:main"
+
+[tool.setuptools]
+packages = ["loglens"]

@@ -1,0 +1,12 @@
+__pycache__/
+*.egg-info/
+dist/
+build/
+*.log
+!examples/*.log
+report*.md
+bench_report_*.md
+bench_*.log
+metrics.json
+results.json
+PLAN.md
