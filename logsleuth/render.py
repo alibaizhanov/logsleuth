@@ -125,4 +125,7 @@ def render_report(report_md, stats, model, elapsed, width=76):
 
 
 def supports_pretty(force_plain=False):
-    return sys.stdout.isatty() and not force_plain
+    import os
+    if force_plain or os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb":
+        return False
+    return sys.stdout.isatty()
