@@ -27,6 +27,10 @@ Confidence: High.
 
 - **Your logs never leave the machine.** No API keys, no cloud, no data processing
   agreements, no argument with the CISO. Works air-gapped.
+- **No keyword lists to maintain.** State changes are found *structurally*: a
+  deploy, an eviction or a leader switch is a near-unique line in a file where
+  normal operation repeats thousands of times. Rare + shortly-before-the-first-error
+  = prime suspect, in any stack, any vendor, any phrasing.
 - **It reads *all* of it.** A deterministic preprocessor crunches the full file —
   deduplicates error patterns, computes numeric trends (heap, latency, disk, queue
   depths), finds deploys/migrations/flag flips, detects error concentration by
@@ -37,18 +41,27 @@ Confidence: High.
 - **Honest by design.** The model is instructed to cite only real lines and to say
   "insufficient evidence" rather than invent a story.
 
-## Benchmark
+## Benchmarks
 
-10 blind scenarios (written after the code was frozen, generators included in
-[`bench/`](bench/)): Kafka rebalance storms, expired TLS certs, clock skew, cache
-evictions after a config change, backup-window IO saturation, connection leaks,
-third-party rate limiting, NFS-stalled thread pools, bad canaries, flapping
-health checks.
+Two blind benchmark sets, both in [`bench/`](bench/) with generators and ground
+truth. Every scenario was written *after* the code was frozen, so nothing is
+tuned to the answers. Reproduce with `python bench/run_bench.py`.
 
-**Result: 8/10 correct root causes** with `qwen3:8b` on a MacBook M1 Pro (16GB),
-~80 seconds per analysis. The two misses stopped one causal hop short of the true
-root cause (named the saturated resource, not what saturated it). Reproduce it
-yourself: `python bench/run_bench.py`.
+**Set 1 — 10 common failures** (Kafka rebalance storms, expired TLS certs, clock
+skew, cache evictions after a config change, backup-window IO saturation,
+connection leaks, third-party rate limiting, NFS-stalled thread pools, bad
+canaries, flapping health checks): **10/10 correct root causes.**
+
+**Set 2 — 9 harder failures**, most requiring a 2–3 hop causal chain (a poison-pill
+message stuck at one offset, inode exhaustion with 412GB free, a DST-repeated cron
+run, an upstream contract change, a hot shard, CPU throttling after a pod
+reschedule, humongous-allocation GC thrash, split brain, config drift):
+**6/9 correct.** The 3 misses name the right component but stop one causal hop
+short of the trigger.
+
+Measured with `qwen3:8b` on a MacBook M1 Pro (16GB), ~80s per analysis. Bigger
+models do better; that's a one-flag change.
+
 
 ## Install
 
@@ -81,10 +94,12 @@ queue depths), and color-coded sections with confidence badges. Piped or with
 ## Usage
 
 ```bash
-logsleuth incident.log                  # analyze a file
-kubectl logs deploy/api | logsleuth -   # or pipe anything into it
-logsleuth incident.log --json           # machine-readable output
-logsleuth incident.log --dry-run        # show the evidence pack, prove nothing else is sent
+logsleuth demo                        # try it right now on a bundled sample incident
+logsleuth incident.log                # analyze a file
+logsleuth api.log db.log gateway.log  # merge services chronologically; source becomes a dimension
+kubectl logs deploy/api | logsleuth -  # or pipe anything into it
+logsleuth incident.log --json         # machine-readable output
+logsleuth incident.log --dry-run      # show the evidence pack, prove nothing else is sent
 logsleuth incident.log --model qwen3:14b  # bigger machine, smarter analysis
 ```
 

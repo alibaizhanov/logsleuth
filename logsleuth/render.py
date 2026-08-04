@@ -67,6 +67,55 @@ def _md_inline(text):
     return text
 
 
+def render_header(stats, model, width=76):
+    """Everything computable BEFORE the model runs: frame, incident map, trends."""
+    o = []
+    bar = "─" * width
+    o.append(f"{GREY}╭{bar}╮{RESET}")
+    o.append(f"{GREY}│{RESET} {BOLD}logsleuth{RESET}  {DIM}· local analysis · nothing left this machine{RESET}")
+    o.append(f"{GREY}│{RESET} {DIM}{stats['total_lines']:,} lines · {stats['signal_lines']:,} signal · "
+             f"{len(stats.get('changes', []))} change events · model {model}{RESET}")
+    o.append(f"{GREY}╰{bar}╯{RESET}")
+    pos = stats.get("sig_positions") or []
+    if pos:
+        o.append("")
+        o.append(f" {BOLD}INCIDENT MAP{RESET} {DIM}(error density across the file){RESET}")
+        o.append(f"   {heat_color(density_map(pos, stats['total_lines']))}")
+        pcts = stats.get("change_pcts") or []
+        if pcts:
+            o.append(f"   {MAGENTA}{marker_row(pcts)}{RESET}  {DIM}▼ = deploy/config/migration{RESET}")
+        o.append(f"   {DIM}start{' ' * 34}end{RESET}")
+    tseries = stats.get("trend_series") or []
+    if tseries:
+        o.append("")
+        o.append(f" {BOLD}TRENDS{RESET}")
+        for label, series, direction in tseries[:5]:
+            arrow = f"{RED}▲{RESET}" if direction == "up" else f"{BLUE}▼{RESET}"
+            o.append(f"   {arrow} {label:<28.28} {CYAN}{sparkline(series, 34)}{RESET}")
+    o.append("")
+    return "\n".join(o)
+
+
+def colorize_md_line(raw, width=76):
+    """Colorize one markdown line of the model report (for streaming)."""
+    line = raw.rstrip()
+    m = re.match(r"^#{2,3}\s+(.*)", line)
+    if m:
+        title = re.sub(r"\s*[—-].*$", "", m.group(1)).strip()
+        color, icon = GREY, "•"
+        for key, c, ic in SECTION_STYLE:
+            if key in title.lower():
+                color, icon = c, ic
+                break
+        return (f"\n {color}{BOLD}{icon} {title.upper()}{RESET}\n"
+                f" {color}{'─' * min(len(title) + 4, width)}{RESET}")
+    if line.strip().startswith(("- ", "* ")) or re.match(r"^\s*\d+\.\s", line):
+        return f"   {_md_inline(line.strip())}"
+    if line.strip():
+        return f" {_md_inline(line.strip())}"
+    return ""
+
+
 def render_report(report_md, stats, model, elapsed, width=76):
     """stats: dict from preprocess() with extras: sig_positions, change_pcts, trend_series."""
     o = []
