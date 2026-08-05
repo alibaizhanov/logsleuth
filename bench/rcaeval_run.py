@@ -61,7 +61,8 @@ def to_plain_log(csv_path, out_path, max_lines=200_000):
             ts = row.get("timestamp") or ""
             try:                      # nanosecond epoch -> ISO
                 import datetime as dt
-                iso = dt.datetime.utcfromtimestamp(int(ts) / 1e9).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                iso = dt.datetime.fromtimestamp(int(ts) / 1e9, dt.timezone.utc
+                                                ).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             except Exception:
                 iso = row.get("time") or ""
             out.write(f"{iso} service={row.get('container_name','?')} "
@@ -78,22 +79,34 @@ def run_logsleuth(log_path, model):
     return p.stdout
 
 
-def names_service(report, service, services):
-    """Did the report blame the right service? Look at the root-cause section only."""
+def names_service(report, service, strict=True):
+    """Did the report blame the right service?
+
+    strict: the service must appear in the *first sentence* of the root cause, so a
+    long section that happens to mention every service cannot score by accident.
+    """
     m = re.search(r"##\s*Root cause.*?(?=\n##|\Z)", report, re.S | re.I)
-    section = (m.group(0) if m else report).lower()
-    return service.lower() in section
+    if not m:
+        return False
+    section = m.group(0)
+    body = re.sub(r"^##\s*Root cause\s*", "", section, flags=re.I).strip()
+    if strict:
+        first = re.split(r"(?<=[.!?])\s|\n[-*]", body, maxsplit=1)[0]
+        return service.lower() in first.lower()
+    return service.lower() in body.lower()
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--every", type=int, default=1, help="take every Nth case (sampling)")
     ap.add_argument("--model", default="qwen3:8b")
     ap.add_argument("--out", default="rcaeval_results.json")
     args = ap.parse_args()
 
     cases = list(case_dirs(args.root))
+    cases = cases[::args.every]
     if args.limit:
         cases = cases[:args.limit]
     results, hits = [], 0
@@ -108,16 +121,21 @@ def main():
             report = ""
         finally:
             os.unlink(tmp.name)
-        ok = names_service(report, truth, None)
+        ok = names_service(report, truth, strict=True)
+        loose = names_service(report, truth, strict=False)
         hits += ok
-        results.append({"case": f"{fault}/{run}", "truth": truth, "lines": n, "hit": ok,
+        results.append({"case": f"{fault}/{run}", "truth": truth, "lines": n, "hit": ok, "loose": loose,
                         "root_cause_excerpt": (re.search(r"##\s*Root cause.*?\n(.{0,200})",
                                                          report, re.S | re.I) or [None, ""])[1].strip()})
         print(f"[{i}/{len(cases)}] {fault}/{run:<3} truth={truth:<12} "
               f"{'HIT ' if ok else 'miss'} ({n:,} lines)", flush=True)
     with open(args.out, "w") as fh:
         json.dump({"hits": hits, "total": len(results), "cases": results}, fh, indent=2)
-    print(f"\nservice localization: {hits}/{len(results)} = {100*hits/max(len(results),1):.0f}%")
+    loose_hits = sum(r["loose"] for r in results)
+    print(f"\nservice localization (strict, named in first sentence): "
+          f"{hits}/{len(results)} = {100*hits/max(len(results),1):.0f}%")
+    print(f"service mentioned anywhere in root cause (loose):        "
+          f"{loose_hits}/{len(results)} = {100*loose_hits/max(len(results),1):.0f}%")
 
 
 if __name__ == "__main__":

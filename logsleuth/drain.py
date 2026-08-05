@@ -91,14 +91,23 @@ class Drain:
 
     @staticmethod
     def _similarity(a, b):
-        """Share of positions that agree; wildcards in the template count as agreeing."""
+        """Share of positions holding the same literal token.
+
+        Wildcard positions deliberately do NOT count as agreement, which is what
+        the paper specifies and what keeps the miner honest: counting them made
+        similarity rise as a cluster generalized, so the first cluster to collect
+        a few wildcards started matching everything of that token count and
+        became a black hole. Real one-off events — the deploy, the cron job, the
+        config change we most want to surface — were absorbed into it and never
+        reported as rare. Now a heavily generalized cluster scores *low* and has
+        to earn each new member on literal matches.
+        """
         if not a:
             return 0.0, 0
         same = wild = 0
         for x, y in zip(a, b):
             if x == WILDCARD:
                 wild += 1
-                same += 1
             elif x == y:
                 same += 1
         return same / len(a), wild

@@ -10,3 +10,5 @@ bench_*.log
 metrics.json
 results.json
 PLAN.md
+corpus_sweep.json
+rcaeval_results.json

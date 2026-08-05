@@ -103,10 +103,15 @@ def s4():
 # 5. Nightly backup saturates the disk: queries slow down exactly in the backup window
 def s5():
     L, t = [], datetime(2026, 8, 4, 1, 30)
+    announced = False
     for i in range(900):
         t += timedelta(seconds=random.uniform(1, 4))
         in_backup = datetime(2026, 8, 4, 2, 0) <= t <= datetime(2026, 8, 4, 2, 40)
-        if i % 200 == 0 and in_backup:
+        # Announce the backup the moment its window opens. Emitting this on an
+        # arbitrary later iteration put the cause *after* its own effect, and a
+        # correct analysis then rightly refused to blame it.
+        if in_backup and not announced:
+            announced = True
             L.append(f"{ts(t)} INFO  cron pg_basebackup started target=/backup/nightly io_class=best-effort")
         r = random.random()
         if r < 0.5:

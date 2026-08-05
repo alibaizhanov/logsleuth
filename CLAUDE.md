@@ -24,6 +24,8 @@ Default model `qwen3:8b`; a full analysis takes ~80s on an M1 Pro.
 - `parse.py` — format sniffing (json/logfmt/text), multi-format timestamps,
   stack-trace folding, CRI/Docker envelope stripping.
 - `window.py` — `--last/--since/--until` via binary search on byte offsets.
+- `backend.py` — first-run bootstrap: reuse a running Ollama, else start a found binary,
+  else download one into `~/.logsleuth` with consent. Model chosen from available RAM.
 - `cli.py` — input resolution, prompt, Ollama streaming. `render.py` — terminal UI.
 
 ## Conventions
@@ -38,7 +40,12 @@ Never tune against a scenario you are looking at. Write new blind scenarios *aft
 freezing the code, then measure. Current honest numbers:
 - `bench/gen_bench.py` (easy, 10 scenarios): 10/10 root causes
 - `bench/gen_bench2.py` (hard, 9 valid): 6/9 — misses stop one causal hop short
-- LogHub grouping accuracy: 79.5% (was 61% before drain.py; published parsers ~86%)
-- RCAEval (external, 30 real microservice failures): 26/30 service localization
+- LogHub grouping accuracy: 79.1% (was 61% before drain.py; published parsers ~86%)
+  `_similarity()` must not count wildcard positions as agreement — doing so let one
+  cluster generalize into a catch-all that swallowed every rare line in the file.
+- RCAEval (external, 30 real microservice failures): ~50% service localization, scored
+  strictly. Baselines on the same set are 0/30 for every count-based rule and 2/30 for
+  random (`bench/rcaeval_ceiling.py`); ceiling is 30/30. Do not add "the loudest component
+  is the culprit" heuristics — that exact rule was measured at 0/30 and removed.
 - `bench/corpus_sweep.py` over 132 real corpora: 0 failures, <=28MB RSS, 87% with
   timestamps parsed. Run it after any change to scan.py / parse.py / drain.py.

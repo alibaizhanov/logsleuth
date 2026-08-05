@@ -82,11 +82,30 @@ Three benchmark sets, all reproducible from this repo.
 
 **RCAEval** — third-party academic benchmark ([Pham et al.](https://github.com/phamquiluan/RCAEval)),
 30 real Sock Shop failure cases with an annotated root-cause service, ~85k log lines each:
-**26/30 (87%) correct service localization**. Note logsleuth reads *only logs*, while RCAEval
-is built for methods that also consume metrics and traces. `bench/rcaeval_run.py` reproduces it.
+**~50% correct service localization**, scored strictly (the right service must be named in the
+first sentence of the root cause, not merely mentioned somewhere).
+
+That number reads low until you see what it is beating. Running the same 30 cases through
+simple rules, with no model involved at all (`bench/rcaeval_ceiling.py`):
+
+| method | correct |
+|---|---|
+| service with the most error lines | 0/30 |
+| most error lines in the 10 min after fault injection | 0/30 |
+| highest error over-representation vs. baseline traffic | 0/30 |
+| pick a service at random | 2/30 |
+| **logsleuth** | **~15/30** |
+
+Every count-based heuristic scores zero because in a microservice cascade the loudest service
+is the caller that timed out, not the one that broke — the median share of error lines coming
+from the actually-faulty service is 10%. The upper bound is 30/30: the faulty service does emit
+error lines in every case, so the task is solvable from logs, just not by counting.
+
+Note logsleuth reads *only logs*, while RCAEval is built for methods that also consume metrics
+and traces. `bench/rcaeval_run.py` reproduces the run.
 
 **LogHub** — 16 real systems with human-annotated line templates:
-**79.5% grouping accuracy** (was 61% before the Drain-style miner; published parsers land ~86%).
+**79.1% grouping accuracy** (was 61% before the Drain-style miner; published parsers land ~86%).
 `bench/loghub_ga.py` reproduces it.
 
 **Blind synthetic sets** — scenarios written *after* the code was frozen, so nothing is tuned
@@ -99,12 +118,28 @@ Measured with `qwen3:8b` on a MacBook M1 Pro (16GB). Bigger models do better; th
 ## Install
 
 ```bash
-pipx install logsleuth       # or: pip install logsleuth   (installs the `logsleuth` command)
-ollama pull qwen3:8b          # one-time, ~5GB
-logsleuth /var/log/app/incident.log
+pipx install logsleuth        # or: pip install logsleuth
+logsleuth demo
 ```
 
-No other dependencies — pure stdlib.
+That is the whole install. On first run logsleuth asks once before setting up local
+inference, then does it for you:
+
+```
+logsleuth runs the model on this machine, so your logs never leave it.
+  It needs a local runtime (0.1GB) and the model qwen3:8b (5.2GB).
+  Both go in ~/.logsleuth and can be deleted later.
+  Set this up now? [Y/n]
+```
+
+Nothing is installed system-wide and nothing needs `sudo`; `rm -rf ~/.logsleuth` undoes it.
+If you already run Ollama, logsleuth uses it as-is — including whatever model you already
+have pulled, so there is nothing to download at all. Add `--yes` for unattended setup.
+
+The model is picked to fit your machine: `qwen3:4b` under 10GB of RAM, `qwen3:8b` under 24GB,
+`qwen3:14b` above that. Override any of it with `--model` or `LOGSLEUTH_MODEL`.
+
+No Python dependencies — pure stdlib.
 
 
 ## Output
@@ -147,11 +182,13 @@ logsleuth incident.log --model qwen3:14b  # bigger machine, smarter analysis
 
 ## Choosing a model
 
+Picked automatically from your RAM, so this table is only for overriding it.
+
 | Your machine | Model | Notes |
 |---|---|---|
-| 8GB RAM | `qwen3:4b` | fast, decent |
-| 16GB RAM | `qwen3:8b` | **default**, benchmark numbers above |
-| 32GB+ RAM | `qwen3:14b` / `qwen3:32b` | noticeably deeper analysis |
+| under 10GB RAM | `qwen3:4b` | auto-selected; fast, decent |
+| 10–24GB RAM | `qwen3:8b` | auto-selected; benchmark numbers above |
+| 24GB+ RAM | `qwen3:14b` / `qwen3:32b` | auto-selected; noticeably deeper analysis |
 | On-prem server | anything Ollama serves | point `LOGSLEUTH_OLLAMA_URL` at it |
 
 ## How it works

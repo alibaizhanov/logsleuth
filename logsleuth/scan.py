@@ -19,7 +19,12 @@ CHANGE_PAT = re.compile(
     r"|rollout|rotation|version|commit|upgraded?|restarted?|applied|joined|drained"
     r"|backup|cron|job .{0,20}started|maintenance)\b", re.I)
 NUM_PAT = re.compile(r"\b([a-zA-Z_][a-zA-Z_0-9]{2,30})=(\d+(?:\.\d+)?)(ms|MB|GB|%|s|k)?\b")
-DIM_PAT = re.compile(r"\b(node|pod|host|instance|shard|zone|region|container|build|member|id|src)=([\w.-]+)")
+# Any key=value pair is a dimension *candidate*; build_pack keeps the ones whose
+# value count looks like a dimension (2..50 distinct) and drops identifiers.
+# A hardcoded field list has bitten us three times — do not reintroduce one.
+DIM_PAT = re.compile(r"\b([a-zA-Z][\w.\-]{1,30})=([\w.:\-/]{1,60})")
+DIM_SKIP = {"latency", "duration", "size", "bytes", "count", "len", "time", "ms",
+            "status", "code", "retry", "attempt", "offset", "lag", "rid", "txid"}
 # Lowercase once, then a case-sensitive scan: 2x faster than re.IGNORECASE.
 SIGNAL_LOWER = re.compile(
     r"\b(error|fatal|critical|warn(?:ing)?|exception|traceback|panic|sigsegv|oom|refused|"
@@ -97,7 +102,7 @@ def _scan_range(args):
     miner = Drain.from_state(tpl_state) if tpl_state else None
     templates = {}
     series = defaultdict(list)
-    dims_err, cand = defaultdict(Counter), defaultdict(set)
+    dims_err, cand = defaultdict(Counter), defaultdict(Counter)
     density = [0] * DENSITY_BUCKETS
     total = signal = 0
     last_tpl = None
@@ -163,23 +168,26 @@ def _scan_range(args):
                     if len(ser) >= SERIES_CAP * 2:
                         series[(k, "")] = ser[::2]
                 if num is None or k.lower() in ("shard", "partition", "build", "instance"):
-                    cand[k].add(sv[:40])
+                    cand[k][sv[:40]] += 1
                     if sig:
                         dims_err[k][sv[:40]] += 1
             for dim, val in DIM_PAT.findall(line):
-                cand[dim].add(val)
+                if dim.lower() in DIM_SKIP or val.isdigit():
+                    continue
+                if len(cand[dim]) < 200 or val in cand[dim]:
+                    cand[dim][val] += 1
                 if sig:
                     dims_err[dim][val] += 1
 
     return {"templates": templates, "series": {k: v for k, v in series.items()},
             "dims_err": {k: dict(v) for k, v in dims_err.items()},
-            "dims_all": {k: list(v)[:200] for k, v in cand.items()},
+            "dims_all": {k: dict(v) for k, v in cand.items()},
             "density": density, "total": total, "signal": signal}
 
 
 def _merge(parts):
     templates, series = {}, defaultdict(list)
-    dims_err, dims_all = defaultdict(Counter), defaultdict(set)
+    dims_err, dims_all = defaultdict(Counter), defaultdict(Counter)
     density = [0] * DENSITY_BUCKETS
     total = signal = 0
     for p in parts:                                   # parts stay in file order
@@ -316,8 +324,14 @@ def _scan_file(path, workers=None):
         step = size // workers
         ranges = [(path, i * step, size if i == workers - 1 else (i + 1) * step, size, fmt, tpl_state)
                   for i in range(workers)]
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            parts = list(pool.map(_scan_range, ranges))
+        try:
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                parts = list(pool.map(_scan_range, ranges))
+        except Exception:
+            # Importable-as-a-library safety: spawn needs a __main__ guard, and a
+            # caller may not have one. Correctness beats parallelism.
+            workers = 1
+            parts = [_scan_range((path, 0, size, size, fmt, tpl_state))]
 
     templates, series, dims_err, dims_all, density, total, signal = _merge(parts)
 
@@ -395,20 +409,33 @@ def build_pack(sc):
     trend_series = [t[2] for t in trends[:12]]
     trends = [t[1] for t in trends[:12]]
 
+    # Where errors sit across dimensions (service=, pod=, node=, …), reported as
+    # plain distribution and nothing more.
+    #
+    # We used to rank these and hand the top one over as a suspect — first by raw
+    # error share, later by lift over baseline traffic. Both were measured against
+    # 30 annotated RCAEval failures (bench/rcaeval_ceiling.py) and both named the
+    # actual faulty service in 0 of 30 cases, losing even to picking at random
+    # (7%). The reason is structural: the service that *fails loudest* is usually
+    # the caller that timed out waiting, not the one that broke. So the numbers
+    # stay, the verdict goes — downstream reasoning has to come from change
+    # events, timing and error content, which is what actually scores.
     dim_notes = []
-    for dim, cnt in sc["dims_err"].items():
-        universe_size = len(sc["dims_all"].get(dim, []))
-        if not cnt or not (2 <= universe_size <= 50):
+    for dim, err_cnt in sorted(sc["dims_err"].items(), key=lambda kv: -sum(kv[1].values())):
+        base = sc["dims_all"].get(dim, {})
+        base_total, err_total = sum(base.values()), sum(err_cnt.values())
+        if not base_total or err_total < 10 or not (2 <= len(base) <= 50):
             continue
-        top, top_n = cnt.most_common(1)[0]
-        share = top_n / sum(cnt.values())
-        universe = set(sc["dims_all"].get(dim, []))
-        if share > 0.7 and len(universe) > 1:
-            healthy = sorted(universe - {top})[:4]
-            others = (", ".join(v for v, _ in cnt.most_common()[1:4])
-                      or f"none — {', '.join(healthy)} are error-free")
-            dim_notes.append(f"{dim}: {round(share*100)}% of all error-like lines have {dim}={top} "
-                             f"(other values: {others})")
+        spread = ", ".join(
+            f"{val}={round(100 * n / err_total)}% of errors "
+            f"({round(100 * base.get(val, 0) / base_total)}% of its lines)"
+            for val, n in err_cnt.most_common(4))
+        dim_notes.append(f"{dim} — {spread}")
+        if len(dim_notes) >= 5:
+            break
+    if dim_notes:
+        dim_notes.append("(distribution only: the component logging the most errors is "
+                         "commonly a victim of the failure, not its cause)")
 
     windows = ["\n".join(sc["onset_window"])]
     if sc["tail_window"]:

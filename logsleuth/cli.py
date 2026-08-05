@@ -16,13 +16,15 @@ from collections import Counter, defaultdict
 
 TS_PAT = re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})")
 
-from . import __version__, render
+from . import __version__, backend, render
 from .redact import format_health, health
 from .scan import UnreadableLog, build_pack, scan, spool_stdin
 from .window import parse_duration, parse_when, slice_file
 
 OLLAMA_URL = os.environ.get("LOGSLEUTH_OLLAMA_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.environ.get("LOGSLEUTH_MODEL", "qwen3:8b")
+# No hardcoded default: the model is chosen to fit the machine's memory unless
+# the user names one. A model that swaps is worse than a smaller model that fits.
+DEFAULT_MODEL = os.environ.get("LOGSLEUTH_MODEL") or None
 MAX_CHARS_TO_MODEL = 26000
 
 SIGNAL_PAT = re.compile(
@@ -121,27 +123,40 @@ def build_prompt(s: dict) -> str:
 
 # ---------------- Ollama plumbing ----------------
 
-def ollama_get(path: str):
-    with urllib.request.urlopen(f"{OLLAMA_URL}{path}", timeout=5) as r:
-        return json.loads(r.read())
+def confirm(question: str, assume_yes: bool = False) -> bool:
+    """Ask on the terminal. Reads /dev/tty so a piped log on stdin still works."""
+    if assume_yes:
+        return True
+    try:
+        tty = open("/dev/tty", "r+")
+    except OSError:
+        if not sys.stdin.isatty():     # a piped log, or a script: nobody to ask
+            return False
+        sys.stderr.write(f"\n{question} [Y/n] ")
+        sys.stderr.flush()
+        return sys.stdin.readline().strip().lower() in ("", "y", "yes")
+    with tty:
+        tty.write(f"\n{question} [Y/n] ")
+        tty.flush()
+        answer = tty.readline().strip().lower()
+    return answer in ("", "y", "yes")
 
 
-def check_ollama(model: str) -> None:
-    try:
-        ollama_get("/api/version")
-    except (urllib.error.URLError, OSError):
-        die("Ollama is not running.",
-            "logsleuth uses a local model via Ollama so your logs never leave this machine.\n"
-            "  install:  https://ollama.com/download\n"
-            "  then run: ollama serve")
-    try:
-        tags = [m["name"] for m in ollama_get("/api/tags").get("models", [])]
-    except Exception:
-        tags = []
-    if model not in tags and f"{model}:latest" not in tags:
-        die(f"model '{model}' is not installed.",
-            f"  run: ollama pull {model}\n"
-            f"  (~5GB download, one time; needs ~6GB free RAM)")
+def ensure_backend(model, assume_yes: bool = False) -> str:
+    """Get to a state where a local model can answer. Returns the model to use."""
+    def say(msg, cr=False):
+        sys.stderr.write(("\r" if cr else "") + f"{msg}" + ("" if cr else "\n"))
+        sys.stderr.flush()
+
+    resolved, ready = backend.ensure(
+        model, say=say, ask=lambda q: confirm(q, assume_yes), url=OLLAMA_URL)
+    if not ready:
+        die("no local model available.",
+            "logsleuth runs the model on your machine so your logs never leave it.\n"
+            "  set it up automatically:  logsleuth demo --yes\n"
+            f"  or do it by hand:        install https://ollama.com/download, "
+            f"then `ollama pull {resolved}`")
+    return resolved
 
 
 ROOT_CAUSE_RE = re.compile(r"^#{1,4}\s*root cause", re.I | re.M)
@@ -243,7 +258,10 @@ def main() -> None:
                     help="analyze only the last window, e.g. 30m, 2h, 7d")
     ap.add_argument("--since", metavar="TIME", help="analyze from this time onwards")
     ap.add_argument("--until", metavar="TIME", help="analyze up to this time")
-    ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model (default: {DEFAULT_MODEL})")
+    ap.add_argument("--model", default=DEFAULT_MODEL,
+                    help="local model to use (default: chosen to fit this machine's memory)")
+    ap.add_argument("--yes", "-y", action="store_true",
+                    help="answer yes to first-run setup prompts (unattended install)")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     ap.add_argument("--plain", action="store_true", help="plain markdown output (no colors/graphs)")
     ap.add_argument("--dry-run", action="store_true",
@@ -303,7 +321,7 @@ def main() -> None:
         print(prompt)
         return
 
-    check_ollama(args.model)
+    args.model = ensure_backend(args.model, args.yes)
     t0 = time.monotonic()
     pretty = render.supports_pretty(force_plain=args.plain) and not args.json
 
