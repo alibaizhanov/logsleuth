@@ -43,6 +43,22 @@ freezing the code, then measure. Current honest numbers:
 - LogHub grouping accuracy: 79.1% (was 61% before drain.py; published parsers ~86%)
   `_similarity()` must not count wildcard positions as agreement — doing so let one
   cluster generalize into a catch-all that swallowed every rare line in the file.
+- Blind set 1 on `qwen3:4b` (auto-selected under 10GB RAM): 9/10; the tenth is an
+  honest "insufficient evidence", not a wrong answer. The small-machine path is
+  measured, not assumed.
+
+### Tried and rejected — do not re-attempt without a new argument
+- **LCS variant linking across token-count buckets** (merge "close, 0 bytes sent" with
+  "close, 451 bytes (0.4 KB) sent"). Swept 18 strictness settings: best was 79.2% vs
+  79.1% without it, i.e. nothing, while re-introducing over-merge risk. OpenStack
+  gained 31pp, OpenSSH lost 46pp — it trades one corpus for another.
+- **Masking whole timestamps in drain via `parse.TS_COMBINED`.** Sounds obviously right;
+  measured worse on raw logs (937 -> 1126 templates over 10 corpora, Mac 321 -> 413).
+  Drain buckets by token count, so collapsing a 3-token timestamp to 1 token splits one
+  event across buckets whenever the match is not uniform.
+- Lesson: GA ~79% looks like this architecture's plateau. Before spending more on it,
+  first show GA even correlates with root-cause accuracy in our range — it is a proxy,
+  and no measurement links the two.
 - RCAEval (external, 30 real microservice failures): ~50% service localization, scored
   strictly. Baselines on the same set are 0/30 for every count-based rule and 2/30 for
   random (`bench/rcaeval_ceiling.py`); ceiling is 30/30. Do not add "the loudest component
