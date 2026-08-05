@@ -141,7 +141,6 @@ def _curl(url, dest, say, label):
 
 def _download(url, dest, say, label):
     """Stream a download with a progress line."""
-    say(f"downloading {label}…")
     try:
         return _download_stream(url, dest, say, label)
     except urllib.error.URLError as e:
@@ -153,6 +152,7 @@ def _download(url, dest, say, label):
 
 
 def _download_stream(url, dest, say, label):
+    say(f"downloading {label}…")
     with urllib.request.urlopen(url, timeout=60, context=_ssl_context()) as resp, open(dest, "wb") as out:
         total = int(resp.headers.get("Content-Length") or 0)
         done = 0
