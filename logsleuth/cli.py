@@ -17,7 +17,8 @@ from collections import Counter, defaultdict
 TS_PAT = re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})")
 
 from . import __version__, render
-from .scan import build_pack, scan, spool_stdin
+from .redact import format_health, health
+from .scan import UnreadableLog, build_pack, scan, spool_stdin
 from .window import parse_duration, parse_when, slice_file
 
 OLLAMA_URL = os.environ.get("LOGSLEUTH_OLLAMA_URL", "http://localhost:11434")
@@ -236,6 +237,8 @@ def main() -> None:
     ap.add_argument("logfiles", nargs="+", metavar="logfile",
                     help="one or more log files (merged by timestamp, source becomes an analysis "
                          "dimension), '-' for stdin, or 'demo' for a bundled sample incident")
+    ap.add_argument("--health", action="store_true",
+                    help="print parse diagnostics only — no log content, safe to share in a bug report")
     ap.add_argument("--last", metavar="DUR",
                     help="analyze only the last window, e.g. 30m, 2h, 7d")
     ap.add_argument("--since", metavar="TIME", help="analyze from this time onwards")
@@ -249,6 +252,18 @@ def main() -> None:
     args = ap.parse_args()
 
     path, tmp = resolve_input(args.logfiles)
+
+    if args.health:
+        h = health(path)
+        sc = scan(path)
+        pack = build_pack(sc)
+        print(format_health(h, {"templates": len(sc["templates"]),
+                                "compression": sc["total"] / max(len(sc["templates"]), 1),
+                                "signal": sc["signal"], "rare": len(pack["changes"]),
+                                "trends": len(pack["trends"])}))
+        if tmp:
+            os.unlink(tmp)
+        return
 
     if args.last or args.since or args.until:
         win = tempfile.NamedTemporaryFile("w", suffix=".log", delete=False)
@@ -340,5 +355,28 @@ def main() -> None:
         print(report)
 
 
+def cli():
+    """Entry point with a safety net: an unexpected failure must never look like a crash."""
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.stderr.write("\ninterrupted\n")
+        sys.exit(130)
+    except UnreadableLog as e:
+        die(str(e))
+    except BrokenPipeError:
+        sys.exit(0)
+    except Exception as e:                                   # noqa: BLE001 - deliberate catch-all
+        sys.stderr.write(color(
+            f"\nlogsleuth failed on this input: {type(e).__name__}: {e}\n"
+            "Nothing was sent anywhere — the failure is local.\n\n"
+            "To help fix it, run:\n"
+            "    logsleuth --health <your file>\n"
+            "It prints parse diagnostics only (counts, formats, line shapes) with no log\n"
+            "content, and can be attached to an issue at\n"
+            "https://github.com/alibaizhanov/logsleuth/issues\n", C_RED))
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    cli()

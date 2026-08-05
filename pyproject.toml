@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logsleuth"
-version = "0.8.1"
+version = "0.9.0"
 description = "Local AI root-cause analysis for production logs. Nothing leaves your machine."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,7 +25,7 @@ classifiers = [
 Homepage = "https://github.com/alibaizhanov/logsleuth"
 
 [project.scripts]
-logsleuth = "logsleuth.cli:main"
+logsleuth = "logsleuth.cli:cli"
 
 [tool.setuptools]
 packages = ["logsleuth"]

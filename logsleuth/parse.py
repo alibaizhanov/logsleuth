@@ -106,8 +106,13 @@ def sniff(sample_lines):
                     continue
             except ValueError:
                 pass
-        if s.count("=") >= 2 and " " in s:
-            lf += 1
+        # logfmt means the line *is* key=value pairs, not that it merely contains
+        # a couple ("... logname= uid=0 euid=0" in syslog is plain text).
+        toks = s.split()
+        if len(toks) >= 3:
+            kv = sum(1 for t in toks if re.match(r"^\w[\w.\-]*=", t))
+            if kv / len(toks) > 0.6:
+                lf += 1
     total = max(js + lf, 1)
     if js / total > 0.6 and js >= 3:
         return "json"
@@ -153,6 +158,8 @@ def parse_json_line(line):
     level, lvl_key = pick(LEVEL_KEYS)
     msg, msg_key = pick(MSG_KEYS)
     fields = {k: v for k, v in flat.items() if k not in (ts_key, lvl_key, msg_key)}
+    if ts is None:
+        ts = timestamp_of(line)
     return (str(ts) if ts is not None else None,
             str(level).upper() if level is not None else None,
             str(msg) if msg is not None else s,
@@ -178,6 +185,8 @@ def parse_logfmt_line(line):
     level, lvl_key = pick(LEVEL_KEYS)
     msg, msg_key = pick(MSG_KEYS)
     rest = {k: v for k, v in fields.items() if k not in (ts_key, lvl_key, msg_key)}
+    if ts is None:
+        ts = timestamp_of(line)
     return (ts, str(level).upper() if level else None, msg or line.strip(), rest)
 
 

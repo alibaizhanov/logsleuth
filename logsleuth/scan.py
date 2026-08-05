@@ -37,6 +37,8 @@ SERIES_CAP = 4096
 MAX_TEMPLATES = 200_000
 WINDOW = 15
 PARALLEL_MIN_BYTES = 6 << 20       # below this, one process is faster than forking
+MAX_LINE = 1 << 16                 # a "line" longer than this is pathological: read it in pieces
+                                   # so one 2GB line without newlines cannot exhaust memory
 
 
 def normalize(line):
@@ -46,12 +48,41 @@ def normalize(line):
     return line.translate(_DIGITS).strip()
 
 
-def _open(path, mode="rt"):
+class UnreadableLog(Exception):
+    """Raised with a human-readable reason when a file cannot be treated as a log."""
+
+
+def probe(path):
+    """Cheap sanity check before doing any work. Returns the text encoding to use."""
+    if os.path.isdir(path):
+        raise UnreadableLog(f"{path} is a directory — point logsleuth at a log file")
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(8192)
+    except OSError as e:
+        raise UnreadableLog(str(e))
+    if path.endswith(".gz"):
+        if head[:2] != b"\x1f\x8b":
+            raise UnreadableLog(f"{os.path.basename(path)} ends in .gz but is not gzip data")
+        return "utf-8"
+    if head[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return "utf-16"
+    if head[:3] == b"\xef\xbb\xbf":
+        return "utf-8-sig"
+    if b"\x00" in head:
+        raise UnreadableLog("this looks like a binary file, not a text log")
+    printable = sum(1 for b in head if 9 <= b <= 13 or 32 <= b < 127 or b >= 128)
+    if head and printable / len(head) < 0.75:
+        raise UnreadableLog("this looks like a binary file, not a text log")
+    return "utf-8"
+
+
+def _open(path, mode="rt", encoding="utf-8"):
     """Open plain or gzipped logs transparently — rotated archives are .gz."""
     if path.endswith(".gz"):
         import gzip
-        return gzip.open(path, mode, errors="replace")
-    return open(path, mode, errors="replace")
+        return gzip.open(path, mode, encoding=encoding, errors="replace")
+    return open(path, mode, encoding=encoding, errors="replace")
 
 
 def _decimate(pts, cap=SERIES_CAP):
@@ -77,7 +108,7 @@ def _scan_range(args):
             fh.readline()                      # drop the partial first line
         pos = fh.tell()
         while pos < end:
-            line = fh.readline()
+            line = fh.readline(MAX_LINE)
             if not line:
                 break
             here = pos
@@ -225,8 +256,9 @@ def _train_templates(path, fmt, n=TRAIN_LINES):
     """
     miner = Drain()
     with _open(path) as fh:
-        for i, line in enumerate(fh):
-            if i >= n:
+        for i in range(n):
+            line = fh.readline(MAX_LINE)
+            if not line:
                 break
             line = line.rstrip("\n")
             line, _ = strip_container_envelope(line)
@@ -245,6 +277,7 @@ def sniff_format(path, n=60):
 
 def scan(path, workers=None):
     """Scan a log file. Parallel across cores for large files, flat memory always."""
+    encoding = probe(path)
     tmp_unpacked = None
     if path.endswith(".gz"):
         # A gzip stream has no stable byte offsets, so unpack once and treat it
@@ -252,8 +285,13 @@ def scan(path, workers=None):
         import gzip
         import shutil
         tmp = tempfile.NamedTemporaryFile("wb", suffix=".log", delete=False)
-        with gzip.open(path, "rb") as src:
-            shutil.copyfileobj(src, tmp)
+        try:
+            with gzip.open(path, "rb") as src:
+                shutil.copyfileobj(src, tmp)
+        except (OSError, EOFError) as e:
+            tmp.close()
+            os.unlink(tmp.name)
+            raise UnreadableLog(f"cannot read {os.path.basename(path)}: {e}")
         tmp.close()
         tmp_unpacked = path = tmp.name
     try:

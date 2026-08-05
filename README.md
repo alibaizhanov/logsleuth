@@ -38,6 +38,12 @@ Confidence: High.
   read once in byte-range chunks across CPU cores and only aggregates are kept, so
   a 2GB log costs the same RAM as a 2MB one. (Measured: 2M lines in 3.1s / 21MB on
   an M1 Pro; a naive in-memory pass took 29s and 788MB.)
+- **It never shows you a traceback.** Binary files, broken archives, a directory,
+  UTF-16, a 20MB line with no newlines, 60k distinct lines, no timestamps at all —
+  each gets a plain sentence explaining the problem. When something unexpected does
+  break, the message tells you to run `logsleuth --health <file>`, which prints
+  parse diagnostics — counts, formats, line *shapes* — with **no log content**, so
+  you can attach it to an issue without leaking anything.
 - **Verified on 132 real public corpora.** Every LogHub dataset, full size —
   including HDFS (1.6GB, 11.2M lines, scanned in 37s) and BGL (4.7M lines) — plus
   Spark, OpenStack, Android, Apache, syslog and Kubernetes container logs.
@@ -127,6 +133,7 @@ logsleuth app.log --last 30m          # only the last 30 minutes (seeks, does no
 logsleuth app.log --since 03:00 --until 04:00
 kubectl logs deploy/api --since=1h | logsleuth -   # k8s CRI format is unwrapped automatically
 logsleuth app.log.2.gz                # rotated archives work as-is
+logsleuth app.log --health            # parse diagnostics only, safe to share
 logsleuth incident.log                # analyze a file
 logsleuth api.log db.log gateway.log  # merge services chronologically; source becomes a dimension
 kubectl logs deploy/api | logsleuth -  # or pipe anything into it
