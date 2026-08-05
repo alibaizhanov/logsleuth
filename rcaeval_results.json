@@ -1,0 +1,27 @@
+{
+  "hits": 3,
+  "total": 3,
+  "cases": [
+    {
+      "case": "carts_f1/1",
+      "truth": "carts",
+      "lines": 84664,
+      "hit": true,
+      "root_cause_excerpt": ""
+    },
+    {
+      "case": "carts_f1/2",
+      "truth": "carts",
+      "lines": 85307,
+      "hit": true,
+      "root_cause_excerpt": ""
+    },
+    {
+      "case": "carts_f1/3",
+      "truth": "carts",
+      "lines": 85154,
+      "hit": true,
+      "root_cause_excerpt": ""
+    }
+  ]
+}

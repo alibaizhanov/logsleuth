@@ -67,13 +67,18 @@ evidence supports it. Prefer quiet-but-new signals and monotonic trends over lou
 - Symptoms are not causes: if threads/queues/memory are exhausted, ask WHAT exhausted them \
 and walk the causal chain as far back as the evidence allows.
 
-Produce a concise incident report in markdown:
-## Symptom (2-3 sentences)
-## Timeline (ordered, with timestamps where present)
-## Root cause hypothesis — name the failing component/change; confidence high/medium/low; \
-evidence lines quoted verbatim
-## Ruled out — loud signals you deliberately did NOT blame, and why
-## Suggested next steps (3-5 concrete actions)
+OUTPUT FORMAT — use these exact headings, in this order, nothing before or after.
+An engineer is reading this at 3am: lead with the answer, keep every section tight.
+
+## Root cause
+One or two sentences naming the failing component or change, then "Confidence: high|medium|low".
+Then 2-4 bullets, each quoting a real evidence line.
+## Ruled out
+1-3 bullets: loud signals you deliberately did NOT blame, and why. Omit the section if none.
+## Timeline
+3-6 bullets, ordered, with timestamps where present.
+## Next steps
+2-4 concrete actions, most urgent first.
 
 === RARE / NOTABLE EVENTS (near-unique lines — candidate state changes, ranked by suspicion) ===
 {changes}
@@ -138,8 +143,21 @@ def check_ollama(model: str) -> None:
             f"  (~5GB download, one time; needs ~6GB free RAM)")
 
 
+ROOT_CAUSE_RE = re.compile(r"^#{1,4}\s*root cause", re.I | re.M)
+
+FORMAT_REMINDER = (
+    "\n\nYour previous answer did not follow the required format. Reply again using "
+    "exactly these headings and nothing else: '## Root cause', '## Ruled out', "
+    "'## Timeline', '## Next steps'. Start with '## Root cause'."
+)
+
+
 def analyze(prompt: str, model: str) -> str:
     return "".join(analyze_stream(prompt, model))
+
+
+def has_root_cause(report: str) -> bool:
+    return bool(ROOT_CAUSE_RE.search(report or ""))
 
 
 def analyze_stream(prompt: str, model: str):
@@ -278,10 +296,11 @@ def main() -> None:
         # everything deterministic shows up instantly; the model report streams in below it
         print(render.render_header(s, args.model))
         sys.stdout.flush()
-        buf = ""
+        buf = collected = ""
         try:
             for piece in analyze_stream(prompt, args.model):
                 buf += piece
+                collected += piece
                 while "\n" in buf:
                     line, buf = buf.split("\n", 1)
                     out = render.colorize_md_line(line)
@@ -292,6 +311,15 @@ def main() -> None:
             die(f"ollama request failed: {e}")
         if buf.strip():
             print(render.colorize_md_line(buf))
+        if not has_root_cause(collected + buf):
+            status("model drifted from the report format — asking once more")
+            try:
+                for line in analyze(prompt + FORMAT_REMINDER, args.model).splitlines():
+                    out = render.colorize_md_line(line)
+                    if out:
+                        print(out)
+            except urllib.error.URLError as e:
+                die(f"ollama request failed: {e}")
         print(f"\n {render.GREY}─ done in {time.monotonic() - t0:.0f}s · "
               f"local model, zero bytes sent anywhere{render.RESET}\n")
         return
@@ -299,6 +327,9 @@ def main() -> None:
     status(f"analyzing with local model {args.model} (first run may take ~1-2 min)…")
     try:
         report = analyze(prompt, args.model)
+        if not has_root_cause(report):
+            status("model drifted from the report format — asking once more")
+            report = analyze(prompt + FORMAT_REMINDER, args.model)
     except urllib.error.URLError as e:
         die(f"ollama request failed: {e}")
 

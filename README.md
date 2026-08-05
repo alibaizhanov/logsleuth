@@ -67,24 +67,22 @@ Confidence: High.
 
 ## Benchmarks
 
-Two blind benchmark sets, both in [`bench/`](bench/) with generators and ground
-truth. Every scenario was written *after* the code was frozen, so nothing is
-tuned to the answers. Reproduce with `python bench/run_bench.py`.
+Three benchmark sets, all reproducible from this repo.
 
-**Set 1 — 10 common failures** (Kafka rebalance storms, expired TLS certs, clock
-skew, cache evictions after a config change, backup-window IO saturation,
-connection leaks, third-party rate limiting, NFS-stalled thread pools, bad
-canaries, flapping health checks): **10/10 correct root causes.**
+**RCAEval** — third-party academic benchmark ([Pham et al.](https://github.com/phamquiluan/RCAEval)),
+30 real Sock Shop failure cases with an annotated root-cause service, ~85k log lines each:
+**26/30 (87%) correct service localization**. Note logsleuth reads *only logs*, while RCAEval
+is built for methods that also consume metrics and traces. `bench/rcaeval_run.py` reproduces it.
 
-**Set 2 — 9 harder failures**, most requiring a 2–3 hop causal chain (a poison-pill
-message stuck at one offset, inode exhaustion with 412GB free, a DST-repeated cron
-run, an upstream contract change, a hot shard, CPU throttling after a pod
-reschedule, humongous-allocation GC thrash, split brain, config drift):
-**6/9 correct.** The 3 misses name the right component but stop one causal hop
-short of the trigger.
+**LogHub** — 16 real systems with human-annotated line templates:
+**79.5% grouping accuracy** (was 61% before the Drain-style miner; published parsers land ~86%).
+`bench/loghub_ga.py` reproduces it.
 
-Measured with `qwen3:8b` on a MacBook M1 Pro (16GB), ~80s per analysis. Bigger
-models do better; that's a one-flag change.
+**Blind synthetic sets** — scenarios written *after* the code was frozen, so nothing is tuned
+to the answers. Set 1 (10 common failures): **10/10**. Set 2 (9 harder, 2-3 causal hops):
+**6/9** — the misses name the right component but stop one hop short of the trigger.
+
+Measured with `qwen3:8b` on a MacBook M1 Pro (16GB). Bigger models do better; that's a one-flag change.
 
 
 ## Install
@@ -100,7 +98,8 @@ No other dependencies — pure stdlib.
 
 ## Output
 
-In a terminal you get a visual report: an **incident map** (error density across
+The report leads with the answer — root cause first, with quoted evidence — so you can stop
+reading as soon as you have what you need. In a terminal you also get a visual header: an **incident map** (error density across
 the file, with deploy/config markers), **trend sparklines** (latency, memory,
 queue depths), and color-coded sections with confidence badges. Piped or with
 `--plain` it degrades to clean markdown; `--json` for machines.

@@ -36,7 +36,7 @@ DENSITY_BUCKETS = 44
 SERIES_CAP = 4096
 MAX_TEMPLATES = 200_000
 WINDOW = 15
-PARALLEL_MIN_BYTES = 32 << 20      # below this, one process is faster than forking
+PARALLEL_MIN_BYTES = 6 << 20       # below this, one process is faster than forking
 
 
 def normalize(line):
