@@ -29,14 +29,52 @@ def strip_container_envelope(line):
     return line, None
 
 
-# --- timestamps -------------------------------------------------------------
-TS_PATTERNS = [
-    re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})"),            # ISO / RFC3339
-    re.compile(r"^\[?(\d{2}/[A-Za-z]{3}/\d{4}:\d{2}:\d{2}:\d{2})"),          # Apache CLF
-    re.compile(r"^([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})"),           # syslog
-    re.compile(r"^\[?(\d{10})(?:\.\d+)?\]?[\s|]"),                            # unix epoch
-    re.compile(r"^\[(\d{2}:\d{2}:\d{2})"),                                     # bare clock
-]
+# --- timestamps ---------------------------------------------------------------
+# Real logs put the time in many shapes, and not always at the start of the line
+# (OpenStack prefixes the source filename, k8s prefixes a stream marker). So we
+# search a bounded prefix with one combined pattern instead of anchoring at 0.
+# Every format below was taken from a real corpus, not invented.
+TS_SEARCH_WINDOW = 64
+
+TS_COMBINED = re.compile(
+    r"(?P<iso>\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d{1,9})?)"
+    r"|(?P<bgl>\d{4}-\d{2}-\d{2}-\d{2}\.\d{2}\.\d{2}(?:\.\d+)?)"
+    r"|(?P<compact>\d{8}-\d{2}:\d{2}:\d{2}(?::\d{1,3})?)"
+    r"|(?P<slash2>\d{2}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})"
+    r"|(?P<clf>\d{2}/[A-Za-z]{3}/\d{4}:\d{2}:\d{2}:\d{2})"
+    r"|(?P<ctime>[A-Z][a-z]{2} [A-Z][a-z]{2} {1,2}\d{1,2} \d{2}:\d{2}:\d{2} \d{4})"
+    r"|(?P<syslog>[A-Z][a-z]{2} {1,2}\d{1,2} \d{2}:\d{2}:\d{2})"
+    r"|(?P<hdfs>\b\d{6} \d{6}\b)"
+    r"|(?P<md>\b\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)"
+    r"|(?P<dotmd>\b\d{2}\.\d{2} \d{2}:\d{2}:\d{2})"
+    r"|(?P<epoch>\b1[0-9]{9}\b)"
+)
+
+# kind -> (strptime format, normalizer applied to the raw text first)
+TS_FORMATS = {
+    "iso": ("%Y-%m-%d %H:%M:%S", lambda v: v.replace("T", " ").split(".")[0].split(",")[0]),
+    "bgl": ("%Y-%m-%d-%H.%M.%S", lambda v: ".".join(v.split(".")[:3])),
+    "compact": ("%Y%m%d-%H:%M:%S", lambda v: ":".join(v.split(":")[:3])),
+    "slash2": ("%y/%m/%d %H:%M:%S", lambda v: v),
+    "clf": ("%d/%b/%Y:%H:%M:%S", lambda v: v),
+    "ctime": ("%a %b %d %H:%M:%S %Y", lambda v: re.sub(r"\s+", " ", v)),
+    "syslog": ("%b %d %H:%M:%S", lambda v: re.sub(r"\s+", " ", v)),
+    "hdfs": ("%y%m%d %H%M%S", lambda v: v),
+    "md": ("%m-%d %H:%M:%S", lambda v: v.split(".")[0]),
+    "dotmd": ("%m.%d %H:%M:%S", lambda v: v),
+}
+
+
+def timestamp_kind(line):
+    """(raw timestamp text, kind) found anywhere in the line's leading window."""
+    m = TS_COMBINED.search(line[:TS_SEARCH_WINDOW])
+    return (m.group(0), m.lastgroup) if m else (None, None)
+
+
+def timestamp_of(line):
+    return timestamp_kind(line)[0]
+
+
 LEVEL_PAT = re.compile(r"\b(TRACE|DEBUG|INFO|NOTICE|WARN(?:ING)?|ERROR|ERR|FATAL|CRIT(?:ICAL)?|PANIC)\b")
 
 # A continuation line belongs to the previous event: indented, or a stack frame.
@@ -48,12 +86,6 @@ MSG_KEYS = ("msg", "message", "log", "event", "@message", "text")
 TS_KEYS = ("ts", "time", "timestamp", "@timestamp", "eventTime", "date")
 
 
-def timestamp_of(line):
-    for pat in TS_PATTERNS:
-        m = pat.match(line)
-        if m:
-            return m.group(1)
-    return None
 
 
 def is_continuation(line):

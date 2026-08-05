@@ -39,3 +39,6 @@ freezing the code, then measure. Current honest numbers:
 - `bench/gen_bench.py` (easy, 10 scenarios): 10/10 root causes
 - `bench/gen_bench2.py` (hard, 9 valid): 6/9 — misses stop one causal hop short
 - LogHub grouping accuracy: 79.5% (was 61% before drain.py; published parsers ~86%)
+- RCAEval (external, 30 real microservice failures): 26/30 service localization
+- `bench/corpus_sweep.py` over 132 real corpora: 0 failures, <=28MB RSS, 87% with
+  timestamps parsed. Run it after any change to scan.py / parse.py / drain.py.

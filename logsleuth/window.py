@@ -11,7 +11,7 @@ import datetime as dt
 import os
 import re
 
-from .parse import strip_container_envelope, timestamp_of
+from .parse import TS_FORMATS, strip_container_envelope, timestamp_kind, timestamp_of
 
 DUR = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhdw])$", re.I)
 UNIT = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
@@ -46,17 +46,36 @@ def parse_when(text, reference=None):
 
 
 def line_time(line, reference=None):
+    """Parse this line's timestamp into a datetime, whatever shape it is written in."""
     inner, env = strip_container_envelope(line)
-    raw = (env or {}).get("ts") or timestamp_of(inner) or timestamp_of(line)
+    envelope_ts = (env or {}).get("ts")
+    if envelope_ts:
+        try:
+            return parse_when(str(envelope_ts).split("+")[0].split("Z")[0].split(".")[0], reference)
+        except ValueError:
+            pass
+    raw, kind = timestamp_kind(inner)
+    if not raw:
+        raw, kind = timestamp_kind(line)
     if not raw:
         return None
-    raw = raw.split("+")[0].split("Z")[0].strip()
-    if "." in raw:
-        raw = raw.split(".")[0]
+    if kind == "epoch":
+        try:
+            return dt.datetime.fromtimestamp(int(raw), dt.timezone.utc).replace(tzinfo=None)
+        except (ValueError, OSError):
+            return None
+    fmt, prep = TS_FORMATS.get(kind, (None, None))
+    if not fmt:
+        return None
     try:
-        return parse_when(raw, reference)
+        got = dt.datetime.strptime(prep(raw), fmt)
     except ValueError:
         return None
+    # formats without a year (syslog, Android, Proxifier) borrow it from the file
+    if "%Y" not in fmt and "%y" not in fmt:
+        base = reference or dt.datetime.now()
+        got = got.replace(year=base.year)
+    return got
 
 
 def _read_line_at(fh, offset):
