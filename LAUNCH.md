@@ -148,8 +148,13 @@ Read each subreddit's self-promotion rules first. r/sre in particular is unforgi
 ## 4. Homebrew
 
 262 million formula installs a year and we ship pip only. This is the cheapest unclaimed
-distribution channel we have. A formula needs a stable tagged release (we have v0.11.0)
-and a checksum.
+distribution channel we have.
+
+The formula is written and its assertions verified by hand: `packaging/homebrew/`.
+It has never been built by `brew` itself — this machine has no Homebrew — so before
+announcing the tap anywhere, run `brew audit --strict --online` on a machine that
+does. homebrew-core is not an option yet (notability bar); a personal tap works
+immediately and needs nobody's approval.
 
 ---
 
