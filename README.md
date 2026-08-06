@@ -59,9 +59,9 @@ Confidence: High.
 - **Templates learned, not guessed.** Line grouping uses a Drain-style parse tree
   (ours, pure stdlib): variable parts are found *positionally* — block ids,
   hostnames, usernames, paths — instead of matching a list of "looks like data"
-  regexes. Measured on [LogHub](https://github.com/logpai/loghub), 16 real
-  systems with human-annotated templates: **79.6% grouping accuracy**, up from
-  61% before (published parsers land around 86%). `bench/loghub_ga.py` reproduces it.
+  regexes. Measured on [Loghub-2.0](https://github.com/logpai/loghub-2.0) — 13 real
+  systems, **39 million lines**, human-annotated: **79.3% grouping accuracy** at
+  116,000 lines/second. `bench/loghub2_ga.py` reproduces it.
 - **No keyword lists to maintain.** State changes are found *structurally*: a
   deploy, an eviction or a leader switch is a near-unique line in a file where
   normal operation repeats thousands of times. Rare + shortly-before-the-first-error
@@ -104,15 +104,26 @@ error lines in every case, so the task is solvable from logs, just not by counti
 Note logsleuth reads *only logs*, while RCAEval is built for methods that also consume metrics
 and traces. `bench/rcaeval_run.py` reproduces the run.
 
-**LogHub** — 16 real systems with human-annotated line templates:
-**79.1% grouping accuracy** (was 61% before the Drain-style miner; published parsers land ~86%).
-`bench/loghub_ga.py` reproduces it.
+**Loghub-2.0** — 13 real systems, 39 million annotated lines. This is the benchmark the
+ISSTA'24 study ["How Far Are We?"](https://github.com/logpai/loghub-2.0) built after showing
+that the older 2,000-line LogHub flatters every parser; on full-size data accuracy drops
+sharply and most parsers cannot finish at all — only 6 of 15 completed within 12 hours.
+
+| | |
+|---|---|
+| grouping accuracy | **79.3%** (74.9% before enum-aware templates) |
+| throughput | **116,000 lines/second**, 39M lines in 5.6 minutes |
+
+`bench/loghub2_ga.py` reproduces it. The older 2k benchmark is kept as `bench/loghub_ga.py`
+for continuity (79.1%), but the number above is the one that predicts behaviour on a real file.
 
 **Blind synthetic sets** — scenarios written *after* the code was frozen, so nothing is tuned
 to the answers. Set 1 (10 common failures): **10/10**. Set 2 (9 harder, 2-3 causal hops):
 **6/9** — the misses name the right component but stop one hop short of the trigger.
 
-Measured with `qwen3:8b` on a MacBook M1 Pro (16GB). Bigger models do better; that's a one-flag change.
+Measured with `qwen3:8b` on a MacBook M1 Pro (16GB). On `qwen3:4b` — what we auto-select on
+machines under 10GB of RAM — set 1 scores 9/10, and the tenth is an honest "insufficient
+evidence" rather than a wrong answer. Bigger models do better; that's a one-flag change.
 
 
 ## Install

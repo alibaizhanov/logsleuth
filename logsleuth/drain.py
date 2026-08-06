@@ -15,6 +15,11 @@ import re
 MAX_DEPTH = 4          # tree levels spent on leading tokens
 MAX_CHILD = 30         # branching cap per node; overflow goes to a shared "*" child
 SIM_THRESHOLD = 0.4    # min share of matching positions to join a template
+# Enum detection (see _Cluster.seal): a wildcard position that only ever held a
+# couple of values is a categorical field, not a variable. Swept against
+# Loghub-2.0: 2 values is the only setting that wins overall, 3+ over-splits.
+ENUM_MAX_VALUES = 2    # more distinct values than this and it is a variable
+ENUM_MIN_LINES = 500   # too few lines to tell a category from coincidence
 WILDCARD = "<*>"
 
 # Cheap pre-masking of things that are unambiguously data. Kept short on purpose:
@@ -44,15 +49,45 @@ def tokenize(line):
 
 
 class _Cluster:
-    __slots__ = ("tokens", "count", "cid")
+    __slots__ = ("tokens", "count", "cid", "vals", "enums")
 
     def __init__(self, tokens, cid):
         self.tokens = tokens
         self.count = 1
         self.cid = cid
+        self.vals = {}      # wildcarded position -> distinct values, until it overflows
+        self.enums = ()     # positions judged categorical, decided by seal()
 
     def template(self):
         return " ".join(self.tokens)
+
+    def note(self, i, *values):
+        """Remember what a wildcarded position held, while the set stays small."""
+        seen = self.vals.get(i)
+        if seen is None:
+            seen = self.vals[i] = set()
+        elif not seen:                      # already overflowed: high-cardinality
+            return
+        seen.update(values)
+        if len(seen) > ENUM_MAX_VALUES:
+            seen.clear()                    # empty set marks "too many to be a category"
+
+    def seal(self):
+        """Decide which wildcards are categorical fields rather than variables.
+
+        A position holding two values across thousands of lines is an enum — a
+        protocol, a log level, a state name. Drain cannot see this while
+        streaming: the first differing line wildcards the position forever, so
+        eight SOCKS5 lines among ten thousand HTTPS ones silently merge two
+        distinct events, and an exact-match metric then scores the whole cluster
+        wrong. Human annotators keep enums literal; so do we. Freezing the
+        decision once after training keeps matching a single lookup.
+        """
+        self.enums = tuple(sorted(
+            i for i, seen in self.vals.items()
+            if 1 < len(seen) <= ENUM_MAX_VALUES and self.count >= ENUM_MIN_LINES))
+        self.vals = {}
+        return self.enums
 
 
 class Drain:
@@ -133,11 +168,15 @@ class Drain:
             self.clusters.append(cl)
         else:
             cl.count += 1
-            # generalize: any position that now differs becomes a wildcard
+            # generalize: any position that now differs becomes a wildcard, but
+            # keep what it held so seal() can tell enums from real variables
             t = cl.tokens
             for i, (x, y) in enumerate(zip(t, tokens)):
-                if x != y and x != WILDCARD:
+                if x == WILDCARD:
+                    cl.note(i, y)
+                elif x != y:
                     t[i] = WILDCARD
+                    cl.note(i, x, y)
         return cl.cid
 
     def match(self, line):
@@ -149,20 +188,40 @@ class Drain:
         if leaf:
             cl = self._best(leaf, tokens)
             if cl is not None:
-                return cl.template()
+                if not cl.enums:
+                    return cl.template()
+                out = list(cl.tokens)
+                for i in cl.enums:
+                    if i < len(tokens):
+                        out[i] = tokens[i]
+                return " ".join(out)
         # unseen shape: mask digit-bearing tokens so it still groups sanely
         return " ".join(WILDCARD if _HAS_DIGIT.search(t) else t for t in tokens)
 
+    def seal(self):
+        """Freeze enum decisions. Call once, when training is done."""
+        for cl in self.clusters:
+            cl.seal()
+        return self
+
     def state(self):
-        """Frozen, picklable template list for parallel workers."""
-        return [cl.tokens for cl in self.clusters]
+        """Frozen, picklable miner for parallel workers.
+
+        Sealing happens here so every worker inherits identical enum decisions;
+        one that re-derived them from its own byte range would disagree with its
+        peers and split a single event across chunk boundaries.
+        """
+        self.seal()
+        return [(cl.tokens, cl.enums) for cl in self.clusters]
 
     @classmethod
     def from_state(cls, templates, **kw):
         d = cls(**kw)
-        for toks in templates:
+        for entry in templates:
+            toks, enums = entry if isinstance(entry, tuple) else (entry, ())
             leaf = d._leaf(toks, create=True)
             cl = _Cluster(list(toks), len(d.clusters))
+            cl.enums = tuple(enums)
             leaf.append(cl)
             d.clusters.append(cl)
         return d
@@ -172,4 +231,4 @@ def train_from_lines(lines, depth=MAX_DEPTH, sim=SIM_THRESHOLD):
     d = Drain(depth=depth, sim=sim)
     for line in lines:
         d.train(line)
-    return d
+    return d.seal()

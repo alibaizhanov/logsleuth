@@ -10,7 +10,7 @@ Note: this working directory is still named `loglens` (pre-rebrand) — the pack
 ```bash
 python3 -m logsleuth demo               # bundled sample incident
 python3 -m logsleuth FILE --dry-run     # print the evidence pack, run no model
-python3 bench/loghub_ga.py /tmp/loghub  # grouping accuracy vs real logs (needs loghub clone)
+python3 bench/loghub2_ga.py /tmp/loghub2 # grouping accuracy, 39M annotated lines
 python3 -m build && python3 -m twine upload dist/*   # release (bump version in 2 places first)
 ```
 Ollama lives at `~/Applications/Ollama.app/Contents/Resources/ollama` (no brew, no sudo).
@@ -40,12 +40,22 @@ Never tune against a scenario you are looking at. Write new blind scenarios *aft
 freezing the code, then measure. Current honest numbers:
 - `bench/gen_bench.py` (easy, 10 scenarios): 10/10 root causes
 - `bench/gen_bench2.py` (hard, 9 valid): 6/9 — misses stop one causal hop short
-- LogHub grouping accuracy: 79.1% (was 61% before drain.py; published parsers ~86%)
-  `_similarity()` must not count wildcard positions as agreement — doing so let one
-  cluster generalize into a catch-all that swallowed every rare line in the file.
+- **Loghub-2.0 grouping accuracy: 79.3%** over 13 systems / 39M lines at 116k lines/s
+  (`bench/loghub2_ga.py`). This is the number to move; the old 2k LogHub (79.1%,
+  `bench/loghub_ga.py`) is kept for continuity only — ISSTA'24 showed it flatters
+  every parser. Baseline before enum-aware templates was 74.9%.
+  Two invariants the miner must keep:
+  - `_similarity()` must not count wildcard positions as agreement — doing so let one
+    cluster generalize into a catch-all that swallowed every rare line in the file.
+  - a wildcard position that only ever held 2 values is an enum, not a variable
+    (`_Cluster.seal`). Without it, 8 SOCKS5 lines poisoned a 10,219-line HTTPS
+    cluster and Proxifier scored 1%. Swept: 2 values wins, 3+ over-splits.
 - Blind set 1 on `qwen3:4b` (auto-selected under 10GB RAM): 9/10; the tenth is an
   honest "insufficient evidence", not a wrong answer. The small-machine path is
   measured, not assumed.
+- Loghub-2.0 lives in /tmp/loghub2 (zenodo.org/record/8275861, 920MB of zips, ~5GB
+  unpacked). GA scoring must compare group identity, not rebuilt tuples — the
+  quadratic version never finishes on BGL/Spark.
 
 ### Tried and rejected — do not re-attempt without a new argument
 - **LCS variant linking across token-count buckets** (merge "close, 0 bytes sent" with
@@ -56,9 +66,10 @@ freezing the code, then measure. Current honest numbers:
   measured worse on raw logs (937 -> 1126 templates over 10 corpora, Mac 321 -> 413).
   Drain buckets by token count, so collapsing a 3-token timestamp to 1 token splits one
   event across buckets whenever the match is not uniform.
-- Lesson: GA ~79% looks like this architecture's plateau. Before spending more on it,
-  first show GA even correlates with root-cause accuracy in our range — it is a proxy,
-  and no measurement links the two.
+- Both were measured on the old 2k benchmark. The "GA ~79% is this architecture's
+  plateau" conclusion drawn from them was wrong: enum-aware templates moved
+  Loghub-2.0 from 74.9% to 79.3%. The real lesson is that the 2k set was too small
+  to show a difference — measure on Loghub-2.0 before concluding anything.
 - RCAEval (external, 30 real microservice failures): ~50% service localization, scored
   strictly. Baselines on the same set are 0/30 for every count-based rule and 2/30 for
   random (`bench/rcaeval_ceiling.py`); ceiling is 30/30. Do not add "the loudest component
