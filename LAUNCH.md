@@ -27,24 +27,44 @@ keyboard for the following morning — answering comments matters more than the 
 
 **Title** — the measurable claim, no "AI", no adjectives:
 
+> Show HN: Your coding agent can't read a 2GB log. This fixes that (MCP, local, 17,000x)
+
+Alternates, both tested against the same rule — lead with something checkable:
+
 > Show HN: Logsleuth – the service with the most errors is the culprit 0 times out of 30
-
-Alternate, if the above reads too much like a riddle:
-
 > Show HN: Local root-cause analysis that reads the whole log file (2M lines in 12.6s)
+
+**Which to pick.** The MCP framing is the strongest hook available in 2026 and it
+solves the adoption problem the other two do not: a human remembers a log tool during
+an incident, which is monthly at best, while an agent hits an oversized file several
+times a day. It is also the only one of the three that does not compete with "paste it
+into Claude" — it becomes the thing Claude calls. Use the loudest-service title only
+if the write-up is already circulating on its own, so the post can ride it.
 
 **Body:**
 
 ---
 
-I kept losing time in incidents the same way: `grep ERROR`, get two hundred hits,
-scroll, and eventually notice the one INFO line above them that actually mattered.
+Hand any coding agent a 2GB log and watch what it does: reads the first few hundred
+lines, greps blindly, then reasons confidently about whatever it happened to see. A
+bigger model does not fix this. The file is larger than any context window, and no
+amount of intelligence recovers what was never read.
 
-So I built logsleuth. You point it at a log file and it prints a root cause with the
-real log lines as evidence, plus what it deliberately didn't blame. The reasoning runs
-on a local model via Ollama — nothing leaves the machine.
+So I built logsleuth. It reads the whole file deterministically and returns a compact
+summary of what actually happened in it — as a CLI for you, and as an MCP server for
+your agent. Measured on a 208MB log: 1.6M lines in 9.1 seconds using 58MB of RAM,
+returned as 12KB. That is a 17,000x reduction, and it is not truncation — what
+survives is chosen by rarity and position, so a config change that appears once
+outranks ten thousand timeouts.
 
-The part I think is actually interesting isn't the model, it's what happens before it.
+```json
+{ "mcpServers": { "logsleuth": { "command": "logsleuth-mcp" } } }
+```
+
+No model runs in the server. Your agent is the model, and a better one than the local
+qwen3 the CLI drives; the server's job is to make the file legible.
+
+The part I think is actually interesting is *how* it decides what survives.
 
 While building the benchmark I measured the obvious heuristics on RCAEval, an academic
 benchmark of 30 real microservice failures with an annotated culprit service. "Blame
@@ -71,9 +91,11 @@ Other numbers, all reproducible from the repo:
 - 132 public corpora scanned with zero failures, zero tracebacks on adversarial input
 - blind scenario set: 10/10, and stable — three independent runs gave the same verdict every time
 
-Install is `pipx install logsleuth`, then `logsleuth demo`. First run offers to set up
-local inference for you (~5GB model download); if you already run Ollama it uses yours
-and downloads nothing.
+Install is `brew install alibaizhanov/tap/logsleuth` or `pipx install logsleuth`, then
+`logsleuth demo`. Zero dependencies, pure standard library. Using it from an agent
+needs nothing else at all — the MCP server runs no model. Using the CLI standalone
+offers to set up local inference on first run (~5GB); if you already run Ollama it
+uses yours and downloads nothing.
 
 To check the privacy claim rather than trust it: `logsleuth incident.log --dry-run`
 prints the exact text that would be sent to the model. Grep it for your secrets.
@@ -136,6 +158,13 @@ local-model angle *here specifically*, because that is what they came for. Menti
 model auto-sizing (4b under 10GB RAM, 8b under 24GB, 14b above) and that it reuses an
 existing Ollama install.
 
+**r/mcp and the MCP server directories** — the newest and least crowded channel, and
+the one where "reads a file too big for your context" is immediately legible without
+explaining anything about logs. Submit to the community server lists too.
+
+**r/ClaudeAI, r/cursor and similar agent-tool communities** — same framing as the MCP
+Show HN. These audiences feel the oversized-file problem daily and have no fix for it.
+
 **r/devops and r/sre** — post the standalone article, not the tool. Title as the
 finding. Answer questions; do not pitch.
 
@@ -169,6 +198,14 @@ are in the README rather than a claim of accuracy: 10/10 on blind single-service
 scenarios, 6/9 on harder multi-hop ones, 17/30 strict on RCAEval microservice cascades
 where every counting baseline scores 0/30. Run `bench/rcaeval_run.py` and check. The
 honest summary: reliable on one service, gives you a direction on a cascade.
+
+**"Why not just let the agent grep the file?"**
+It can, and for a known string that is the right tool. The case this covers is the
+other one: you do not know what you are looking for. Grep needs a pattern; the whole
+point of an incident is that the useful line is one you would not have thought to
+search for — a config value applied once, a leader election, a cron job starting.
+Ranking by rarity finds those without knowing their wording in advance, which is also
+why there is no keyword list anywhere in this: every one we tried had to be deleted.
 
 **"I can already paste my logs into Claude or ChatGPT."**
 If you can, do — it's free and already open. Two cases where you can't: the file is

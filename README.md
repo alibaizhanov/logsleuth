@@ -225,6 +225,9 @@ logsleuth incident.log --model qwen3:14b  # bigger machine, smarter analysis
 `--dry-run` prints exactly what would be passed to the local model — audit it, then
 `grep` your favorite secret to confirm it's not there.
 
+Every command, plus how to run the benchmarks and cut a release, is in
+[RUNBOOK.md](RUNBOOK.md).
+
 ## Choosing a model
 
 Picked automatically from your RAM, so this table is only for overriding it.
