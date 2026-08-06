@@ -3,8 +3,8 @@ class Logsleuth < Formula
 
   desc "Root-cause analysis that reads the whole log file, locally"
   homepage "https://github.com/alibaizhanov/logsleuth"
-  url "https://files.pythonhosted.org/packages/15/a2/773b8c062c12dbb0aa7f6f53454ca4e4d28a3d129d55c0df4e0d270ab492/logsleuth-0.11.0.tar.gz"
-  sha256 "1f5de55232e52433e9474c64095b0fc7659a3864cf3b03668f509149e79f33fc"
+  url "https://files.pythonhosted.org/packages/d8/30/3a70cd5c39b36825995692897b1e9edcab1b0cace60ee6494de19700f2e0/logsleuth-0.12.0.tar.gz"
+  sha256 "5508d39a9575dd1b88b0bde24e3ea1926ced9098fe890a8fdd2cd8226bc82013"
   license "MIT"
 
   depends_on "python@3.13"
@@ -54,5 +54,17 @@ class Logsleuth < Formula
     # makes it safe to paste into a bug report.
     health = shell_output("#{bin}/logsleuth #{testpath}/incident.log --health")
     refute_match "DB_POOL_MAX", health
+
+    # The MCP entry point is a separate console script; a broken one would otherwise
+    # ship unnoticed, since nothing else in this test touches it. One initialize
+    # round-trip over stdio proves the protocol path works end to end.
+    init = '{"jsonrpc":"2.0","id":1,"method":"initialize",' \
+           '"params":{"protocolVersion":"2025-06-18","capabilities":{}}}'
+    reply = pipe_output(bin/"logsleuth-mcp", "#{init}\n")
+    # Match on structure, not on byte-exact JSON: the serializer's spacing is not
+    # part of the contract and pinning it makes the test fail on a formatting change
+    # that breaks nothing.
+    assert_match(/"name":\s*"logsleuth"/, reply)
+    assert_match version.to_s, reply
   end
 end
