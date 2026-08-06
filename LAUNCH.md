@@ -50,8 +50,8 @@ While building the benchmark I measured the obvious heuristics on RCAEval, an ac
 benchmark of 30 real microservice failures with an annotated culprit service. "Blame
 the service with the most error lines" gets it right **0 out of 30**. So does "most
 errors in the ten minutes after the fault." So does over-representation versus baseline
-traffic. Picking a service at random scores 2/30, so every counting heuristic is worse
-than chance.
+traffic. Chance is 2.6/30 — there are 11-13 services — so every counting heuristic does worse
+than guessing.
 
 The reason is structural: the service screaming loudest is almost always the caller
 that timed out waiting, not the one that broke. Median share of error lines coming
@@ -111,7 +111,7 @@ launched off a benchmark write-up, not a feature list.
    | most error lines | 0/30 |
    | most errors in 10 min after injection | 0/30 |
    | highest over-representation vs baseline | 0/30 |
-   | random guess | 2/30 |
+   | random guess (expected value) | 2.6/30 |
 
 3. Why every counting rule fails: the loudest is the caller that timed out. Median
    share of error lines from the true culprit is 10%. The upper bound is 30/30 — the

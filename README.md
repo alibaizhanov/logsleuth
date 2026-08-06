@@ -101,7 +101,7 @@ simple rules, with no model involved at all (`bench/rcaeval_ceiling.py`):
 | service with the most error lines | 0/30 |
 | most error lines in the 10 min after fault injection | 0/30 |
 | highest error over-representation vs. baseline traffic | 0/30 |
-| pick a service at random | 2/30 |
+| pick a service at random (expected value) | 2.6/30 |
 | **logsleuth** | **17/30** |
 
 Every count-based heuristic scores zero because in a microservice cascade the loudest service

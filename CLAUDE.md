@@ -103,7 +103,7 @@ freezing the code, then measure. Current honest numbers:
   Breakdown by culprit: orders 8/9, front-end 5/9, carts 4/12. The carts cases are
   where the remaining headroom is — worth reading a few of those logs before
   building anything aimed at multi-hop reasoning. Baselines on the same set are 0/30 for every count-based rule and 2/30 for
-  random (`bench/rcaeval_ceiling.py`); ceiling is 30/30. Do not add "the loudest component
+  chance, expected value 2.6/30 (`bench/rcaeval_ceiling.py`); ceiling is 30/30. Do not add "the loudest component
   is the culprit" heuristics — that exact rule was measured at 0/30 and removed.
 - `bench/corpus_sweep.py` over 132 real corpora: 0 failures, <=28MB RSS, 87% with
   timestamps parsed. Run it after any change to scan.py / parse.py / drain.py.

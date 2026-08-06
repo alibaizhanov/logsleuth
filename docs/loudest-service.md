@@ -20,11 +20,16 @@ to be not just imperfect but **completely, reliably wrong**.
 
 ## The measurement
 
-[RCAEval](https://github.com/phamquiluan/RCAEval) is an academic benchmark from a
-WWW'25 paper. It contains real failure cases from a running microservice system —
-faults were injected into a specific service, everything was recorded, and the
-culprit is annotated. The subset I used has 30 cases, each about 85,000 log lines
-across thirteen services.
+[RCAEval](https://github.com/phamquiluan/RCAEval) (Pham et al., WWW'25) is an academic
+benchmark of 735 real failure cases across three microservice systems. Faults were
+injected into a specific service, everything was recorded, and the culprit is
+annotated. I used the RE3-SS subset — 30 cases from Sock Shop, each about 85,000 log
+lines across eleven to thirteen services — because it is the one where the fault is a code-level
+change that leaves a trace in the logs at all.
+
+One caveat worth stating early: RCAEval is built for methods that consume metrics and
+traces as well as logs. I am scoring log-only analysis on it, which is a handicap I
+chose, not a flaw in the benchmark.
 
 Because the answer is known for every case, you can score any rule you like without
 a model, a heuristic, or an opinion getting in the way. So I scored the obvious ones.
@@ -34,13 +39,14 @@ a model, a heuristic, or an opinion getting in the way. So I scored the obvious 
 | blame the service with the most error lines | **0 / 30** |
 | blame the service with the most errors in the 10 min after the fault | **0 / 30** |
 | blame the service whose errors are most over-represented vs. its normal traffic | **0 / 30** |
-| pick a service at random | 2 / 30 |
+| pick a service at random (expected value) | 2.6 / 30 |
 
 Read that table again. Every counting rule scores **zero**, and random guessing beats
 all of them.
 
 That is a stronger result than "the heuristic is unreliable." A rule that was merely
-useless would land near random. Scoring zero across thirty independent cases means
+useless would land near chance, which here is 2.6 cases out of 30 — one in twelve
+services. Scoring zero across thirty independent cases means
 the rule is *anti-correlated* with the truth — it is actively pointing away from the
 answer. In this benchmark, "most errors" reliably names an innocent service. You
 would do better flipping a coin, and much better asking your least experienced
@@ -136,7 +142,7 @@ it somewhere further down earns nothing. By the looser rule it is 20/30.
 That is not a triumphant number and I want to be careful about how it is read. On a
 multi-service cascade this gives you a direction, not a diagnosis. The comparison that
 makes it meaningful is the table at the top of this post: against 0/30 for every
-counting rule and 2/30 for chance, the difference is between a hint and an anti-hint.
+counting rule and 2.6/30 for chance, the difference is between a hint and an anti-hint.
 
 The failures are also worth reporting, because they are not evenly spread:
 

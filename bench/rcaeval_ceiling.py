@@ -17,7 +17,6 @@ No LLM calls: this reads the CSVs directly.
 import argparse
 import csv
 import os
-import random
 import re
 import sys
 from collections import Counter, defaultdict
@@ -105,11 +104,15 @@ def main():
             if share_a > 0:
                 lift[s] = share_e / share_a
         b_lift = max(lift, key=lift.get) if lift else None
-        b_rand = random.Random(hash(cdir) & 0xFFFF).choice(list(all_l)) if all_l else None
+        # Chance is reported as its expected value, 1/(number of services), not as a
+        # single sampled draw. A draw seeded from hash() is not even reproducible —
+        # Python randomizes string hashing per process, so the "random baseline"
+        # silently changed between runs. An expectation is exact and stable.
+        b_rand = 1.0 / len(all_l) if all_l else 0.0
 
         rows.append({"case": f"{fault}/{run}", "truth": truth, "visible": visible,
                      "most_err": b_most_err, "post_err": b_post_err,
-                     "lift": b_lift, "rand": b_rand,
+                     "lift": b_lift, "rand_ev": b_rand,
                      "truth_err_share": round(100 * err_l.get(truth, 0) / max(tot_e, 1)),
                      "services": len(all_l)})
 
@@ -121,10 +124,11 @@ def main():
     print("BASELINES (no model involved):")
     for key, label in [("most_err", "service with most error lines"),
                        ("post_err", "most error lines in 10 min after injection"),
-                       ("lift", "highest error over-representation (lift)"),
-                       ("rand", "random service")]:
+                       ("lift", "highest error over-representation (lift)")]:
         hit = sum(1 for r in rows if r[key] == r["truth"])
         print(f"  {label:<44}{hit:>3}/{n} = {100*hit/n:>3.0f}%")
+    ev = sum(r["rand_ev"] for r in rows)
+    print(f"  {'pick a service at random (expected value)':<44}{ev:>5.1f}/{n} = {100*ev/n:>3.0f}%")
     print(f"\nmedian share of error lines coming from the injected service: "
           f"{sorted(r['truth_err_share'] for r in rows)[n//2]}%")
     print(f"services per case: {sorted({r['services'] for r in rows})}")
