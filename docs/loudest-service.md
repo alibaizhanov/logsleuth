@@ -129,7 +129,7 @@ nearly unique in a file where everything else repeats, and that it sits just bef
 the trouble started. That property is the same in every stack, every vendor, and
 every language.
 
-On the same 30 RCAEval cases, ranking this way scores **RCAEVAL_SCORE**. That is not a
+On the same 30 RCAEval cases, ranking this way scores **17/30**. That is not a
 triumphant number, and I want to be careful about how it is read: it means that on a
 multi-service cascade the tool gives you a direction rather than a diagnosis. But the
 comparison that matters is the table at the top of this post. Against 0/30 for every

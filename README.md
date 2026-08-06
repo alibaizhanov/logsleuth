@@ -33,7 +33,7 @@ Confidence: High.
   most error lines" gets the answer right **0 times out of 30** — worse than picking at
   random — because the service screaming loudest is the caller that timed out waiting,
   not the one that broke. logsleuth ranks by *rarity and position*, not by volume, and
-  scores ~15/30 on the same set. Numbers and method in [Benchmarks](#benchmarks).
+  scores 17/30 on the same set. Numbers and method in [Benchmarks](#benchmarks).
 - **Your logs never leave the machine.** No API keys, no cloud, no data processing
   agreements, no argument with the CISO. Works air-gapped.
 - **Reads the formats you actually have.** JSON lines, logfmt, plain text —
@@ -90,8 +90,8 @@ Three benchmark sets, all reproducible from this repo.
 
 **RCAEval** — third-party academic benchmark ([Pham et al.](https://github.com/phamquiluan/RCAEval)),
 30 real Sock Shop failure cases with an annotated root-cause service, ~85k log lines each:
-**~50% correct service localization**, scored strictly (the right service must be named in the
-first sentence of the root cause, not merely mentioned somewhere).
+**17/30 (57%) correct service localization**, scored strictly — the right service must be named
+in the *first sentence* of the root cause, not merely mentioned somewhere (67% by the looser rule).
 
 That number reads low until you see what it is beating. Running the same 30 cases through
 simple rules, with no model involved at all (`bench/rcaeval_ceiling.py`):
@@ -102,7 +102,7 @@ simple rules, with no model involved at all (`bench/rcaeval_ceiling.py`):
 | most error lines in the 10 min after fault injection | 0/30 |
 | highest error over-representation vs. baseline traffic | 0/30 |
 | pick a service at random | 2/30 |
-| **logsleuth** | **~15/30** |
+| **logsleuth** | **17/30** |
 
 Every count-based heuristic scores zero because in a microservice cascade the loudest service
 is the caller that timed out, not the one that broke — the median share of error lines coming

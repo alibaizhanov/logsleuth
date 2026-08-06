@@ -1,0 +1,246 @@
+{
+  "hits": 17,
+  "total": 30,
+  "cases": [
+    {
+      "case": "carts_f1/1",
+      "truth": "carts",
+      "lines": 84664,
+      "hit": false,
+      "loose": true,
+      "root_cause_excerpt": "The payment decline (\"amount exceeds 100.00\") is due to a business rule in the payment gateway rejecting transactions over $100. The subsequent 500 error when adding an item to the cart stems from the"
+    },
+    {
+      "case": "carts_f1/2",
+      "truth": "carts",
+      "lines": 85307,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The carts service is returning a `405 Method Not Supported` error when the front-end sends a `POST` request to `/cart`, but the front-end is logging it as a `500 Internal Server Error`. This mismatch"
+    },
+    {
+      "case": "carts_f1/3",
+      "truth": "carts",
+      "lines": 85154,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The issue stems from a cart deletion operation (`DELETE /cart`) that may not be properly handling merged cart sessions, leading to inconsistencies or incomplete deletions. The logs show a successful 2"
+    },
+    {
+      "case": "carts_f1/4",
+      "truth": "carts",
+      "lines": 85848,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The payment was declined due to an amount exceeding the allowed limit (100.00). The payment service (`payment-78bf948dc4-fxv9x`) returned `authorised=false` with the message *\"Payment declined: amount"
+    },
+    {
+      "case": "carts_f3/1",
+      "truth": "carts",
+      "lines": 84162,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The root cause is the **carts service becoming unavailable**, leading to **503 Service Unavailable** and **500 Internal Server Error** responses for front-end requests. This is likely due to the carts"
+    },
+    {
+      "case": "carts_f3/2",
+      "truth": "carts",
+      "lines": 84442,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The payment decline occurred because the order amount exceeded the 100.00 limit enforced by the payment service. The `PaymentResponse{authorised=false, message=Payment declined: amount exceeds 100.00}"
+    },
+    {
+      "case": "carts_f3/3",
+      "truth": "carts",
+      "lines": 84960,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The payment decline occurred because the transaction amount exceeded the payment gateway's limit of $100.00, triggering a \"Payment declined: amount exceeds 100.00\" error. This was the direct cause of"
+    },
+    {
+      "case": "carts_f3/4",
+      "truth": "carts",
+      "lines": 85649,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The initial payment decline due to the amount exceeding the 100.00 limit triggered a 406 \"Not Acceptable\" error in the orders service. Later, the queue-master service failed to spawn a container for t"
+    },
+    {
+      "case": "carts_f4/1",
+      "truth": "carts",
+      "lines": 84024,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The order creation process failed due to a **timeout from one of the services** (likely the carts or user service), triggering a `java.lang.IllegalStateException` in the orders service. The timeout oc"
+    },
+    {
+      "case": "carts_f4/2",
+      "truth": "carts",
+      "lines": 84555,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The root cause is the **carts-db MongoDB instance becoming unreachable**, causing the **carts service to fail** and triggering timeouts in the **front-end service**. This is evidenced by:  \n- A `Conne"
+    },
+    {
+      "case": "carts_f4/3",
+      "truth": "carts",
+      "lines": 83802,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The root cause is a **timeout during order creation** in the `orders` service, triggered by a **delayed or unresponsive downstream service** (likely the `payment` or `shipping` service). The `orders`"
+    },
+    {
+      "case": "carts_f4/4",
+      "truth": "carts",
+      "lines": 84925,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The payment was declined due to the order amount exceeding the 100.00 limit enforced by the payment service. The `PaymentDeclinedException` triggered a `406 Not Acceptable` response from the orders se"
+    },
+    {
+      "case": "front-end_f1/1",
+      "truth": "front-end",
+      "lines": 85513,
+      "hit": false,
+      "loose": true,
+      "root_cause_excerpt": "The root cause is a **500 Internal Server Error** in the `carts` service when processing a POST request to add an item to a cart. Despite the `carts` service logging an informational message about cre"
+    },
+    {
+      "case": "front-end_f1/2",
+      "truth": "front-end",
+      "lines": 85886,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The payment decline occurred because the order amount exceeded the 100.00 limit enforced by the payment service. The `PaymentResponse` explicitly states `\"Payment declined: amount exceeds 100.00\"`, in"
+    },
+    {
+      "case": "front-end_f1/3",
+      "truth": "front-end",
+      "lines": 85171,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The payment request failed because the amount exceeded the limit of 100.00, despite the item's price being 15. This discrepancy suggests a miscalculation in the total amount sent to the payment servic"
+    },
+    {
+      "case": "front-end_f2/1",
+      "truth": "front-end",
+      "lines": 86519,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "npm version upgrade to 10.9.1 caused front-end service failure. Confidence: medium.  \n- \"npm verb stack Error: command failed\" (2024-11-22T04:24:23.036Z)  \n- \"npm timing command:run-script Completed i"
+    },
+    {
+      "case": "front-end_f2/2",
+      "truth": "front-end",
+      "lines": 86678,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "Front-end service npm version upgrade to 10.9.1 caused command failure and SIGTERM, leading to 500 errors. Confidence: high  \n- \"npm timing command:run-script Completed in 820326ms\" (took over 13 minu"
+    },
+    {
+      "case": "front-end_f2/3",
+      "truth": "front-end",
+      "lines": 87396,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "Front-end service npm upgrade to 10.9.1 caused a failed npm command, leading to service instability. Confidence: high  \n- \"npm notice New major version of npm available! 8.19.4 -> 10.9.1\" (first rare"
+    },
+    {
+      "case": "front-end_f3/1",
+      "truth": "front-end",
+      "lines": 46798,
+      "hit": false,
+      "loose": true,
+      "root_cause_excerpt": "The 500 Internal Server Error when posting to the carts service likely stems from an invalid or malformed request payload. The front-end sends a POST request with `itemId` and `unitPrice`, but the car"
+    },
+    {
+      "case": "front-end_f3/2",
+      "truth": "front-end",
+      "lines": 47848,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "Front-end pod's npm process failed due to a recent npm version upgrade. Confidence: high.  \n- \"npm verb stack Error: command failed\" (2024-11-23T08:43:31.434Z)  \n- \"npm ERR! signal SIGTERM\" (2024-11-2"
+    },
+    {
+      "case": "front-end_f3/3",
+      "truth": "front-end",
+      "lines": 48110,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "Front-end pod's npm upgrade to version 10.9.1 caused a failed command execution. Confidence: medium.  \n- \"npm verb stack Error: command failed\" (2024-11-23T20:43:56.199Z)  \n- \"npm ERR! signal SIGTERM\""
+    },
+    {
+      "case": "orders_f1/1",
+      "truth": "orders",
+      "lines": 79207,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The incident was caused by the **orders service becoming unreachable** (Connection refused) when the **front-end service attempted to POST to /orders**. This resulted in a 503 error, indicating a fail"
+    },
+    {
+      "case": "orders_f1/2",
+      "truth": "orders",
+      "lines": 78873,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The root cause is a **Jackson deserialization conflict** in the `CustomerOrder` class due to conflicting setter definitions for the property `\"items\"`, leading to a `400 Bad Request` error when the `o"
+    },
+    {
+      "case": "orders_f1/3",
+      "truth": "orders",
+      "lines": 78278,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The front-end service failed to connect to the **orders service** due to a **\"Connection refused\"** error, indicating the orders service was unreachable or not responding. This likely stems from the o"
+    },
+    {
+      "case": "orders_f3/1",
+      "truth": "orders",
+      "lines": 79514,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The root cause is a **mismatch between the payment service's response format** and the **orders service's expected structure**, leading to a **\"Not Acceptable\" (406)** error when parsing the authoriza"
+    },
+    {
+      "case": "orders_f3/2",
+      "truth": "orders",
+      "lines": 79798,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The orders service failed to connect to its MongoDB database (`orders-db:27017`) due to a `Connection refused` error, indicating a network or database availability issue. This prevented the orders ser"
+    },
+    {
+      "case": "orders_f3/3",
+      "truth": "orders",
+      "lines": 79882,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The orders service failed to connect to the MongoDB database due to a `Connection refused` error, indicating the database server (orders-db:27017) is unreachable. This likely stems from a network issu"
+    },
+    {
+      "case": "orders_f4/1",
+      "truth": "orders",
+      "lines": 51906,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The orders service failed to connect to its MongoDB database (`orders-db:27017`), resulting in a `Connection refused` error. This caused the service to become unavailable, leading to a 503 Service Una"
+    },
+    {
+      "case": "orders_f4/2",
+      "truth": "orders",
+      "lines": 41777,
+      "hit": false,
+      "loose": false,
+      "root_cause_excerpt": "The payment decline occurs because the payment system incorrectly calculates the total amount by multiplying the item's unit price (7.99) by its inventory count (115) instead of the quantity added to"
+    },
+    {
+      "case": "orders_f4/3",
+      "truth": "orders",
+      "lines": 51587,
+      "hit": true,
+      "loose": true,
+      "root_cause_excerpt": "The 503 error when posting an order indicates the **orders service is unreachable**. The error message \"Connection refused\" suggests the **orders service is either down, not listening on the expected"
+    }
+  ]
+}

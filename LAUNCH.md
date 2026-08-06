@@ -59,7 +59,7 @@ from the actually-faulty service is 10%.
 
 So logsleuth ranks by rarity and position instead of volume — a deploy line that
 appears once, shortly before the first new error, outranks ten thousand timeouts. It
-scores TODO_RCAEVAL on that set, strictly (the right service must be named in the first
+scores 17/30 on that set, strictly (the right service must be named in the first
 sentence — no credit for mentioning it further down). For calibration, a paper published this year reports 52.31% Recall@1 on the
 same benchmark using distributed traces and a frontier model; logsleuth reads logs only,
 on a local 8B.
@@ -78,7 +78,7 @@ and downloads nothing.
 To check the privacy claim rather than trust it: `logsleuth incident.log --dry-run`
 prints the exact text that would be sent to the model. Grep it for your secrets.
 
-Honest limits: on multi-service cascades it names the right service about half the time
+Honest limits: on multi-service cascades it names the right service 17 times out of 30
 — good relative to the alternatives above, not good in absolute terms, and I'd rather
 say so than have you find out at 3am. It reads logs only, so failures that are invisible
 in logs (swap thrashing, a saturated NIC) are invisible to it. And it's a single-player
@@ -161,7 +161,7 @@ Answer them plainly. Conceding a limit costs nothing and buys the rest of the ar
 **"How well do LLMs actually do this? Every one I've tried only works on toy examples."**
 The most common objection in the category, and fair. That's why the benchmark numbers
 are in the README rather than a claim of accuracy: 10/10 on blind single-service
-scenarios, 6/9 on harder multi-hop ones, TODO_RCAEVAL strict on RCAEval microservice cascades
+scenarios, 6/9 on harder multi-hop ones, 17/30 strict on RCAEval microservice cascades
 where every counting baseline scores 0/30. Run `bench/rcaeval_run.py` and check. The
 honest summary: reliable on one service, gives you a direction on a cascade.
 
@@ -205,12 +205,6 @@ infrastructure at all.
 The CLI is MIT and stays that way.
 
 ---
-
-> **TODO_RCAEVAL** is a placeholder: our own score is being measured across all 30 cases
-> right now. Until that finishes, the only honest statement is the sampled one. Do not
-> publish an extrapolation — every counting baseline and the 30/30 ceiling above *are*
-> measured on the full set, and a reader who reruns the script will notice immediately
-> if our own number is not.
 
 ## Checklist before posting
 

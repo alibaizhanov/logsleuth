@@ -65,7 +65,7 @@ freezing the code, then measure. Current honest numbers:
 - Our ~50% strict top-1 on RCAEval is **at the level of published SOTA**: RCLAgent
   (multi-agent recursion-of-thought, Claude-3.5-Sonnet backbone) reports 52.31%
   Recall@1 — and it consumes *traces*, while we read logs only with a local 8B.
-  Do not describe our number as weak. Do not lead with it either: incident.io's
+  Do not describe our number as weak — measured across all 30 it is 57%. Do not lead with it either: incident.io's
   public guidance calls anything under ~70% precision trust-destroying, so the
   honest headline is the deterministic scanner, not the localization rate.
 - The measured bottleneck across the field is *reasoning over evidence*, not evidence
@@ -96,8 +96,13 @@ freezing the code, then measure. Current honest numbers:
   plateau" conclusion drawn from them was wrong: enum-aware templates moved
   Loghub-2.0 from 74.9% to 79.3%. The real lesson is that the 2k set was too small
   to show a difference — measure on Loghub-2.0 before concluding anything.
-- RCAEval (external, 30 real microservice failures): ~50% service localization, scored
-  strictly. Baselines on the same set are 0/30 for every count-based rule and 2/30 for
+- RCAEval (external, 30 real microservice failures): **17/30 = 57%** service
+  localization, scored strictly (named in the first sentence); 20/30 = 67% by the
+  looser "mentioned anywhere in the root cause" rule. Measured on all 30 cases —
+  the earlier ~50% was extrapolated from a 10-case sample and understated us.
+  Breakdown by culprit: orders 8/9, front-end 5/9, carts 4/12. The carts cases are
+  where the remaining headroom is — worth reading a few of those logs before
+  building anything aimed at multi-hop reasoning. Baselines on the same set are 0/30 for every count-based rule and 2/30 for
   random (`bench/rcaeval_ceiling.py`); ceiling is 30/30. Do not add "the loudest component
   is the culprit" heuristics — that exact rule was measured at 0/30 and removed.
 - `bench/corpus_sweep.py` over 132 real corpora: 0 failures, <=28MB RSS, 87% with
