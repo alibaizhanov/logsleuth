@@ -1,0 +1,50 @@
+name: Pages
+
+# The legacy Pages builder hung in the deploy step for 15+ minutes with no useful
+# error, twice. This builds Jekyll explicitly instead, so a failure names itself in
+# the log rather than timing out silently.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: false
+      - name: Build with Jekyll
+        run: |
+          gem install jekyll -v '~> 4.3' --no-document
+          gem install jekyll-sitemap kramdown-parser-gfm --no-document
+          cd docs && jekyll build --destination ../_site --trace
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
