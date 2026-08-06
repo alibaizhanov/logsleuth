@@ -34,8 +34,10 @@ cp packaging/homebrew/logsleuth.rb homebrew-tap/Formula/
 cd homebrew-tap && git add . && git commit -m "logsleuth 0.11.0" && git push
 ```
 
-Then verify on a machine that has Homebrew — this repository's formula has never been
-built by `brew` itself, only its test assertions were executed by hand:
+The tap now exists at <https://github.com/alibaizhanov/homebrew-tap> and the formula
+has been built and tested by `brew` itself on macOS/arm64: `audit --strict --online`
+clean, `install --build-from-source` and `test` both exit 0, and the installed binary
+completes a full analysis. Re-run these after any formula change:
 
 ```sh
 brew tap alibaizhanov/tap

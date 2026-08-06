@@ -137,7 +137,7 @@ evidence" rather than a wrong answer. Bigger models do better; that's a one-flag
 ## Install
 
 ```bash
-pipx install logsleuth        # or: pip install logsleuth
+brew install alibaizhanov/tap/logsleuth   # or: pipx install logsleuth
 logsleuth demo
 ```
 
