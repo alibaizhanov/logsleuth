@@ -161,6 +161,32 @@ The model is picked to fit your machine: `qwen3:4b` under 10GB of RAM, `qwen3:8b
 No Python dependencies — pure stdlib.
 
 
+## Use it from an AI agent
+
+An agent that hits a 2GB log has no good move: it reads the first few hundred lines or
+greps blindly, then reasons about whatever it happened to see. That is not fixed by a
+bigger model — the file is larger than any context window.
+
+logsleuth ships an MCP server that hands the agent an evidence pack instead. Measured
+on a 208MB log: **1.6M lines read in 9.1s using 58MB of RAM, returned as 12KB** — a
+17,000x reduction that keeps the parts carrying the answer rather than the parts that
+happen to come first.
+
+```json
+{
+  "mcpServers": {
+    "logsleuth": { "command": "logsleuth-mcp" }
+  }
+}
+```
+
+Three tools: `read_log_evidence` (the whole file, or a `--last 30m` style window),
+`inspect_log_file` (cheap sanity check before committing a turn to it), and
+`log_parse_diagnostics` (format diagnostics containing no log content).
+
+No model runs in the server — the agent is the model, and usually a better one than
+the local qwen3 the CLI uses. The server's job is to make the file legible.
+
 ## Output
 
 The report leads with the answer — root cause first, with quoted evidence — so you can stop

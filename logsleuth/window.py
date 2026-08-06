@@ -17,8 +17,8 @@ DUR = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhdw])$", re.I)
 UNIT = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 
 _FORMATS = [
-    "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
-    "%d/%b/%Y:%H:%M:%S", "%b %d %H:%M:%S", "%H:%M:%S", "%H:%M",
+    "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+    "%Y-%m-%d", "%d/%b/%Y:%H:%M:%S", "%b %d %H:%M:%S", "%H:%M:%S", "%H:%M",
 ]
 
 
@@ -152,10 +152,20 @@ def looks_sorted(path, probes=8):
 
 
 def slice_file(path, out_path, since=None, until=None, last=None):
-    """Write the requested time window to out_path. Returns a description dict."""
+    """Write the requested time window to out_path. Returns a description dict.
+
+    `since` and `until` may be datetimes or strings. Strings are parsed here rather
+    than by the caller, because only here do we know the file's own date — so a bare
+    "02:00" means two in the morning on the day the log covers, not on 1 January 1900,
+    which is what a caller parsing it blind would produce.
+    """
     first, latest = first_last_time(path)
     if not first or not latest:
         return {"ok": False, "reason": "no parseable timestamps in this file"}
+    if isinstance(since, str):
+        since = parse_when(since, reference=first)
+    if isinstance(until, str):
+        until = parse_when(until, reference=first)
     if last is not None:
         since = latest - dt.timedelta(seconds=last)
     sorted_ok = looks_sorted(path)

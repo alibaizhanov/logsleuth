@@ -26,6 +26,7 @@ Homepage = "https://github.com/alibaizhanov/logsleuth"
 
 [project.scripts]
 logsleuth = "logsleuth.cli:cli"
+logsleuth-mcp = "logsleuth.mcp:main"
 
 [tool.setuptools]
 packages = ["logsleuth"]

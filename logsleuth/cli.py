@@ -287,9 +287,9 @@ def main() -> None:
         win = tempfile.NamedTemporaryFile("w", suffix=".log", delete=False)
         win.close()
         try:
-            info = slice_file(path, win.name,
-                              since=parse_when(args.since) if args.since else None,
-                              until=parse_when(args.until) if args.until else None,
+            # Strings go through: slice_file resolves them against the file's own
+            # date, so `--since 02:00` means this log's 02:00, not year 1900.
+            info = slice_file(path, win.name, since=args.since, until=args.until,
                               last=parse_duration(args.last) if args.last else None)
         except ValueError as e:
             die(str(e))
