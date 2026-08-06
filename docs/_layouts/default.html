@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if page.title %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
+<meta name="description" content="{{ page.description | default: site.description }}">
+
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ page.title | default: site.title }}">
+<meta property="og:description" content="{{ page.description | default: site.description }}">
+<meta property="og:url" content="{{ page.url | absolute_url }}">
+<meta property="og:site_name" content="{{ site.title }}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ page.title | default: site.title }}">
+<meta name="twitter:description" content="{{ page.description | default: site.description }}">
+<link rel="canonical" href="{{ page.url | absolute_url }}">
+
+<!--
+  Everything is inline and self-hosted: no web fonts, no analytics, no CDN. A page
+  arguing that your logs should not leave your machine has no business phoning a
+  third party to render itself.
+-->
+<style>
+:root {
+  --bg: #fdfdfc; --fg: #1c1b19; --muted: #6b6864; --rule: #e2e0dc;
+  --accent: #8a3f16; --code-bg: #f4f2ee; --quote: #4a4742;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16151a; --fg: #e6e3dd; --muted: #98938c; --rule: #2e2c33;
+    --accent: #e8a877; --code-bg: #201f26; --quote: #b8b3ab;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #fdfdfc; --fg: #1c1b19; --muted: #6b6864; --rule: #e2e0dc;
+  --accent: #8a3f16; --code-bg: #f4f2ee; --quote: #4a4742;
+}
+:root[data-theme="dark"] {
+  --bg: #16151a; --fg: #e6e3dd; --muted: #98938c; --rule: #2e2c33;
+  --accent: #e8a877; --code-bg: #201f26; --quote: #b8b3ab;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 17px/1.65 Charter, "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+  overflow-wrap: break-word;
+}
+.wrap { max-width: 40rem; margin: 0 auto; padding: 3.5rem 1.25rem 6rem; }
+
+h1, h2, h3 { line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 2rem; margin: 0 0 .4rem; }
+h2 { font-size: 1.3rem; margin: 2.75rem 0 .85rem; }
+h3 { font-size: 1.1rem; margin: 2rem 0 .6rem; }
+p, ul, ol { margin: 0 0 1.15rem; }
+li { margin-bottom: .35rem; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+strong { font-weight: 650; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+
+.subtitle { color: var(--muted); font-style: italic; margin: 0 0 2rem; }
+.meta { color: var(--muted); font-size: .85rem; margin-bottom: 2.5rem; }
+.meta a { color: var(--muted); }
+
+blockquote {
+  margin: 1.5rem 0; padding: .1rem 0 .1rem 1.1rem;
+  border-left: 2px solid var(--rule); color: var(--quote);
+}
+blockquote p:last-child { margin-bottom: 0; }
+
+code, pre, table {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+code { background: var(--code-bg); padding: .1em .35em; border-radius: 3px; font-size: .85em; }
+pre { background: var(--code-bg); padding: .9rem 1rem; border-radius: 5px; overflow-x: auto; font-size: .82rem; line-height: 1.5; }
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* Tables carry the argument in this piece, so they get real styling and their own
+   horizontal scroll rather than forcing the page to scroll sideways. */
+.table-scroll { overflow-x: auto; margin: 1.5rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .84rem; }
+th, td { padding: .5rem .75rem; text-align: left; border-bottom: 1px solid var(--rule); }
+th { font-weight: 600; color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+td:not(:first-child), th:not(:first-child) { text-align: right; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+
+footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .85rem; }
+footer a { color: var(--muted); }
+
+@media (max-width: 34rem) {
+  body { font-size: 16px; }
+  .wrap { padding: 2.5rem 1.1rem 4rem; }
+  h1 { font-size: 1.6rem; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main>{{ content }}</main>
+  <footer>
+    <a href="https://github.com/{{ site.repository }}">{{ site.repository }}</a>
+    — every number here is reproducible from that repository.
+  </footer>
+</div>
+<script>
+// Wrap tables so a wide one scrolls inside itself instead of widening the page.
+document.querySelectorAll('table').forEach(function (t) {
+  if (t.parentElement.classList.contains('table-scroll')) return;
+  var d = document.createElement('div');
+  d.className = 'table-scroll';
+  t.parentNode.insertBefore(d, t);
+  d.appendChild(t);
+});
+</script>
+</body>
+</html>

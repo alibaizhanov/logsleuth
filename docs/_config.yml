@@ -1,0 +1,22 @@
+title: logsleuth
+description: >-
+  Root-cause analysis that reads the whole log file, locally.
+  Notes and measurements.
+url: https://alibaizhanov.github.io
+baseurl: /logsleuth
+repository: alibaizhanov/logsleuth
+
+# kramdown with GFM input so the measurement tables render as tables.
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
+
+# No remote theme: layouts live in _layouts and carry their own CSS, so the site
+# has no external dependency at build or at render time. Same rule as the tool.
+plugins:
+  - jekyll-sitemap
+
+exclude:
+  - _config.yml

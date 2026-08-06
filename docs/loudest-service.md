@@ -1,8 +1,16 @@
-# The loudest service is never the broken one
-
-*A measurement, and what it did to a tool I was building.*
-
 ---
+layout: default
+title: The loudest service is never the broken one
+description: >-
+  Every counting heuristic for finding the faulty microservice scores 0 out of 30 on
+  an annotated benchmark — worse than chance. Why error volume points at victims, and
+  what to rank by instead.
+permalink: /loudest-service/
+---
+
+<h1>The loudest service is never the broken one</h1>
+
+<p class="subtitle">A measurement, and what it did to a tool I was building.</p>
 
 Here is a shape every on-call engineer knows.
 
