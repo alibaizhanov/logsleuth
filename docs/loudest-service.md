@@ -129,12 +129,27 @@ nearly unique in a file where everything else repeats, and that it sits just bef
 the trouble started. That property is the same in every stack, every vendor, and
 every language.
 
-On the same 30 RCAEval cases, ranking this way scores **17/30**. That is not a
-triumphant number, and I want to be careful about how it is read: it means that on a
-multi-service cascade the tool gives you a direction rather than a diagnosis. But the
-comparison that matters is the table at the top of this post. Against 0/30 for every
-counting rule and 2/30 for chance, it is the difference between a hint and an
-anti-hint.
+On the same 30 RCAEval cases, ranking this way scores **17/30**, judged strictly: the
+correct service has to be named in the first sentence of the verdict, and mentioning
+it somewhere further down earns nothing. By the looser rule it is 20/30.
+
+That is not a triumphant number and I want to be careful about how it is read. On a
+multi-service cascade this gives you a direction, not a diagnosis. The comparison that
+makes it meaningful is the table at the top of this post: against 0/30 for every
+counting rule and 2/30 for chance, the difference is between a hint and an anti-hint.
+
+The failures are also worth reporting, because they are not evenly spread:
+
+| injected service | correct |
+|---|---|
+| orders | 8 / 9 |
+| front-end | 5 / 9 |
+| carts | 4 / 12 |
+
+An average of 57% suggests a tool that is mediocre everywhere. What is actually
+happening is that it is reliable on two of the three fault families and poor on the
+third. I do not yet know why, and that is the next thing I will read logs about.
+Reporting only the average would have hidden the most useful fact in the result.
 
 ## The part I actually want you to take away
 
