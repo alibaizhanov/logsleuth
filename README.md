@@ -1,13 +1,15 @@
 # logsleuth
 
-**Local AI root-cause analysis for production logs. Nothing leaves your machine.**
+**Root-cause analysis that reads the whole log file, not the 200 lines you pasted.**
 
-Feed it an incident's worth of logs — gigabytes really are fine: 183MB scans in
-**3 seconds across your cores using 21MB of RAM** — and get back a structured
-root-cause report: symptom, timeline, hypothesis with cited evidence, ruled-out red
-herrings, next steps. All inference runs locally via [Ollama](https://ollama.com), so
-you can use it on logs you'd never paste into a cloud AI: they're full of PII, tokens
-and internal hostnames, and your security team knows it.
+Point it at an incident. It scans the entire file — **2 million lines in 12.6 seconds
+using 61MB of RAM**, so a 2GB log costs the same memory as a 2MB one — works out what
+is actually new, and reports a root cause with the real log lines as evidence, plus
+what it deliberately ruled out.
+
+The reasoning runs on a local model, so nothing leaves your machine. You can check
+that claim yourself in ten seconds: `logsleuth incident.log --dry-run` prints the
+exact text that would reach the model. Grep it for your secrets.
 
 ```
 $ logsleuth incident.log
@@ -26,6 +28,12 @@ Confidence: High.
 
 ## Why
 
+- **The loudest component is almost never the broken one.** This is the whole reason
+  the tool exists. On 30 annotated microservice failures, "blame the service with the
+  most error lines" gets the answer right **0 times out of 30** — worse than picking at
+  random — because the service screaming loudest is the caller that timed out waiting,
+  not the one that broke. logsleuth ranks by *rarity and position*, not by volume, and
+  scores ~15/30 on the same set. Numbers and method in [Benchmarks](#benchmarks).
 - **Your logs never leave the machine.** No API keys, no cloud, no data processing
   agreements, no argument with the CISO. Works air-gapped.
 - **Reads the formats you actually have.** JSON lines, logfmt, plain text —
@@ -36,8 +44,8 @@ Confidence: High.
   cardinality — no hardcoded field list.
 - **Built for real log sizes.** Streaming, parallel, bounded memory: the file is
   read once in byte-range chunks across CPU cores and only aggregates are kept, so
-  a 2GB log costs the same RAM as a 2MB one. (Measured: 2M lines in 3.1s / 21MB on
-  an M1 Pro; a naive in-memory pass took 29s and 788MB.)
+  a 2GB log costs the same RAM as a 2MB one. (Measured on an M1 Pro: 2,057,642 lines
+  / 272MB in 12.6s using 61MB of RAM.)
 - **It never shows you a traceback.** Binary files, broken archives, a directory,
   UTF-16, a 20MB line with no newlines, 60k distinct lines, no timestamps at all —
   each gets a plain sentence explaining the problem. When something unexpected does
@@ -60,8 +68,8 @@ Confidence: High.
   (ours, pure stdlib): variable parts are found *positionally* — block ids,
   hostnames, usernames, paths — instead of matching a list of "looks like data"
   regexes. Measured on [Loghub-2.0](https://github.com/logpai/loghub-2.0) — 13 real
-  systems, **39 million lines**, human-annotated: **79.3% grouping accuracy** at
-  116,000 lines/second. `bench/loghub2_ga.py` reproduces it.
+  systems, **39 million lines**, human-annotated: **79.3% grouping accuracy**.
+  `bench/loghub2_ga.py` reproduces it.
 - **No keyword lists to maintain.** State changes are found *structurally*: a
   deploy, an eviction or a leader switch is a near-unique line in a file where
   normal operation repeats thousands of times. Rare + shortly-before-the-first-error
@@ -112,7 +120,7 @@ sharply and most parsers cannot finish at all — only 6 of 15 completed within 
 | | |
 |---|---|
 | grouping accuracy | **79.3%** (74.9% before enum-aware templates) |
-| throughput | **116,000 lines/second**, 39M lines in 5.6 minutes |
+| throughput | 39M lines scored in 5.6 minutes end-to-end (CSV parse + match + score) |
 
 `bench/loghub2_ga.py` reproduces it. The older 2k benchmark is kept as `bench/loghub_ga.py`
 for continuity (79.1%), but the number above is the one that predicts behaviour on a real file.
