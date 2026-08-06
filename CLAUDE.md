@@ -38,7 +38,11 @@ Default model `qwen3:8b`; a full analysis takes ~80s on an M1 Pro.
 ## Benchmarks — the feedback loop
 Never tune against a scenario you are looking at. Write new blind scenarios *after*
 freezing the code, then measure. Current honest numbers:
-- `bench/gen_bench.py` (easy, 10 scenarios): 10/10 root causes
+- `bench/gen_bench.py` (easy, 10 scenarios): 10/10 root causes, and **stable**: three
+  independent runs of all ten gave the same verdict every time (30/30). Wording moves
+  between runs, the diagnosis does not — so the 10/10 is not a lucky sample. One run in
+  twenty produced an empty report and succeeded on retry; worth watching, not yet a bug
+  with a reproduction.
 - `bench/gen_bench2.py` (hard, 9 valid): 6/9 — misses stop one causal hop short
 - **Loghub-2.0 grouping accuracy: 79.3%** over 13 systems / 39M lines at 116k lines/s
   (`bench/loghub2_ga.py`). This is the number to move; the old 2k LogHub (79.1%,
@@ -56,6 +60,28 @@ freezing the code, then measure. Current honest numbers:
 - Loghub-2.0 lives in /tmp/loghub2 (zenodo.org/record/8275861, 920MB of zips, ~5GB
   unpacked). GA scoring must compare group identity, not rebuilt tuples — the
   quadratic version never finishes on BGL/Spark.
+
+### Where we stand versus published work (researched 2026-08-06)
+- Our ~50% strict top-1 on RCAEval is **at the level of published SOTA**: RCLAgent
+  (multi-agent recursion-of-thought, Claude-3.5-Sonnet backbone) reports 52.31%
+  Recall@1 — and it consumes *traces*, while we read logs only with a local 8B.
+  Do not describe our number as weak. Do not lead with it either: incident.io's
+  public guidance calls anything under ~70% precision trust-destroying, so the
+  honest headline is the deterministic scanner, not the localization rate.
+- The measured bottleneck across the field is *reasoning over evidence*, not evidence
+  extraction (51.4% of failures are "data was present and misused" vs 1.4% "data
+  absent"). More extraction will not help; better-shaped extraction might.
+- Multi-hop failure is specifically an **edge** problem: models identify the right
+  components (Node F1 62.2%) and fumble the links between them (Edge F1 43.4%).
+  That is exactly our 6/9. The fix both research directions converged on: hand the
+  model candidate causal *edges* (per-component first-error ordering, lagged
+  precedence relations) so edge inference becomes edge selection.
+- **Do NOT turn this into a ReAct/tool-calling agent.** 8B-class models fail at
+  tool-call syntax, not at reasoning; a structured multi-agent pipeline scored 0.0
+  with a small base model where a frontier model scored 25-57%.
+- Deep-learning log anomaly detection (DeepLog, LogAnomaly, LogBERT) does not survive
+  replication; PCA on template counts matches it at 1/200000th the training cost.
+  Classical statistics is the right family for us, and it needs no training data.
 
 ### Tried and rejected — do not re-attempt without a new argument
 - **LCS variant linking across token-count buckets** (merge "close, 0 bytes sent" with
