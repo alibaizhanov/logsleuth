@@ -47,11 +47,15 @@ freezing the code, then measure. Current honest numbers:
   the *same evidence packs* scores **10/10**, including all five the local model misses.
   The pack is not the bottleneck; extraction from it is. Do not spend effort adding evidence
   types until that gap closes — measured 2026-08-07.
-  Every local miss is the same shape: the symptom is named as the cause and the chain stops
-  one hop short. 01 "worker crashing" not the resume-same-offset loop; 03 "duplicate charges
-  cause duplicate-charge complaints" (circular) not DST; 05 "pool saturated" not the hot key
-  it had already quoted; 07 "GC pauses" not the 50x payload jump; 08 "replication conflicts"
-  not the two simultaneous leaders.
+  Every local miss was the same shape: the symptom named as the cause, the chain stopping
+  one hop short. Adding explicit causal rules to the prompt — enumerate candidates before
+  committing; a verdict that merely rephrases the errors is not a cause; if a cited line is
+  more specific than the verdict, the verdict is too shallow; exhaustion is never a cause,
+  name what consumed it; if a number grew, name what drove it — took **5/10 -> 7/10**, with
+  no regression on the easy set (still 10/10). 05 and 07 flipped, which are exactly the two
+  the "more specific line" and "name what drove the growth" rules target.
+  Still failing: 01 (names the crash, not the resume-at-same-offset loop), 03 (invents a race
+  condition rather than seeing DST), 08 (quorum failure, not the two simultaneous leaders).
 - **Loghub-2.0 grouping accuracy: 79.3%** over 13 systems / 39M lines at 116k lines/s
   (`bench/loghub2_ga.py`). This is the number to move; the old 2k LogHub (79.1%,
   `bench/loghub_ga.py`) is kept for continuity only — ISSTA'24 showed it flatters
@@ -62,6 +66,10 @@ freezing the code, then measure. Current honest numbers:
   - a wildcard position that only ever held 2 values is an enum, not a variable
     (`_Cluster.seal`). Without it, 8 SOCKS5 lines poisoned a 10,219-line HTTPS
     cluster and Proxifier scored 1%. Swept: 2 values wins, 3+ over-splits.
+- `num_ctx` must leave room for the reasoning a thinking model does before it answers.
+  At 10240 a long deliberation could consume the window and the run emitted an *empty*
+  report, silently, roughly twice in thirty runs. Now 16384, and an empty report is a
+  visible error rather than a blank page.
 - Blind set 1 on `qwen3:4b` (auto-selected under 10GB RAM): 9/10; the tenth is an
   honest "insufficient evidence", not a wrong answer. The small-machine path is
   measured, not assumed.

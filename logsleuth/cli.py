@@ -26,6 +26,11 @@ OLLAMA_URL = os.environ.get("LOGSLEUTH_OLLAMA_URL", "http://localhost:11434")
 # the user names one. A model that swaps is worse than a smaller model that fits.
 DEFAULT_MODEL = os.environ.get("LOGSLEUTH_MODEL") or None
 MAX_CHARS_TO_MODEL = 26000
+# Reasoning models spend tokens thinking before they answer, and that thinking shares
+# the context window with the prompt and the report. At 10240 a long deliberation could
+# leave no room for the answer, and the run produced an empty report — silently, twice
+# in about thirty runs. Headroom is cheaper than a blank page at 3am.
+NUM_CTX = int(os.environ.get("LOGSLEUTH_NUM_CTX", "16384"))
 
 SIGNAL_PAT = re.compile(
     r"\b(ERROR|FATAL|CRITICAL|WARN(?:ING)?|Exception|Traceback|panic|SIGSEGV|OOM|refused|"
@@ -67,8 +72,30 @@ what additional data you would need. An honest "insufficient evidence" beats a f
 incident and are usually baseline noise — do not name them as root cause unless independent \
 evidence supports it. Prefer quiet-but-new signals and monotonic trends over loud old ones.
 - Check whether any RARE event precedes the first incident signal — recent changes are prime suspects.
-- Symptoms are not causes: if threads/queues/memory are exhausted, ask WHAT exhausted them \
-and walk the causal chain as far back as the evidence allows.
+
+FINDING THE CAUSE RATHER THAN THE SYMPTOM. This is where analyses of this evidence \
+usually fail, so work through it before writing anything:
+
+1. First list every candidate cause the evidence supports — at least three if there are \
+three. For each, note the line that supports it and the reason you might reject it. Only \
+then choose. Committing to the first plausible story is the single most common mistake.
+2. Your verdict must NOT be a restatement of the symptom. If it could be produced by \
+rephrasing the error lines themselves, it is not a cause. "Duplicate charges caused \
+duplicate-charge complaints" explains nothing.
+3. If any line you cite as evidence is MORE SPECIFIC than your verdict, your verdict is \
+too shallow, and that specific thing is probably the cause. A verdict of "the pool \
+saturated" while citing a line naming one particular hot key means the key is the answer \
+and the pool is its consequence.
+4. Exhaustion is never a cause: pools, threads, memory, disk, inodes, quotas, file \
+descriptors, slots. Something consumed them — name it.
+5. If something repeats identically forever, explain why it repeats. A crash loop needs \
+the reason each retry fails the same way, not just the fact of crashing.
+6. If a number grew, name what drove it. Rising GC pauses, latency or queue depth are \
+consequences of a change in the input, not events in themselves.
+7. Ask whether your verdict explains the TIMING — why did this start exactly when it did? \
+Something changed at that moment. If your answer cannot say what, keep walking backwards.
+8. The component logging the most errors is usually a victim of the failure rather than \
+its cause: the loudest is typically whoever was waiting on the thing that broke.
 
 OUTPUT FORMAT — use these exact headings, in this order, nothing before or after.
 An engineer is reading this at 3am: lead with the answer, keep every section tight.
@@ -183,7 +210,7 @@ def analyze_stream(prompt: str, model: str):
         data=json.dumps({"model": model,
                          "messages": [{"role": "user", "content": prompt}],
                          "stream": True,
-                         "options": {"temperature": 0.2, "num_ctx": 10240}}).encode(),
+                         "options": {"temperature": 0.2, "num_ctx": NUM_CTX}}).encode(),
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=600) as resp:
         for raw in resp:
@@ -365,6 +392,10 @@ def main() -> None:
             report = analyze(prompt + FORMAT_REMINDER, args.model)
     except urllib.error.URLError as e:
         die(f"ollama request failed: {e}")
+    if not report.strip():
+        die("the model returned an empty report.",
+            "This is usually the context window filling up before the answer starts.\n"
+            f"  retry, or raise it:  LOGSLEUTH_NUM_CTX={NUM_CTX * 2} logsleuth …")
 
     if args.json:
         print(json.dumps({"model": args.model, "stats": {k: s[k] for k in ("total_lines", "signal_lines")},
