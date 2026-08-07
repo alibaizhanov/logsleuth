@@ -126,8 +126,14 @@ sharply and most parsers cannot finish at all — only 6 of 15 completed within 
 for continuity (79.1%), but the number above is the one that predicts behaviour on a real file.
 
 **Blind synthetic sets** — scenarios written *after* the code was frozen, so nothing is tuned
-to the answers. Set 1 (10 common failures): **10/10**. Set 2 (9 harder, 2-3 causal hops):
-**6/9** — the misses name the right component but stop one hop short of the trigger.
+to the answers. Set 1 (10 common failures): **10/10**, and stable — three independent runs
+gave the same verdict every time. Set 2 (10 harder, 2-3 causal hops): **5/10** with the local
+8B model; every miss names a real symptom but stops one hop short of what caused it.
+
+The interesting part is what happens when a *frontier* model reads the same evidence pack:
+**10/10**, including all five the local model missed. So the pack carries the answer and the
+small model cannot always extract it — which is why the MCP server hands the pack to your
+agent rather than reasoning for it. Packs and scoring are reproducible from `bench/`.
 
 Measured with `qwen3:8b` on a MacBook M1 Pro (16GB). On `qwen3:4b` — what we auto-select on
 machines under 10GB of RAM — set 1 scores 9/10, and the tenth is an honest "insufficient

@@ -89,11 +89,14 @@ def s4():
         t += timedelta(seconds=random.uniform(0.3, 1.2))
         r = random.random()
         broke = i > 260
+        # The contract change is the whole point of this scenario, so it is emitted
+        # unconditionally. Gating it on a random draw meant the clue was absent from
+        # 85% of generated logs while the truth file still demanded it be named —
+        # the scenario was unwinnable and scored as a miss anyway.
+        if i == 261:
+            L.append(f"{ts(t)} INFO  quotes-api partner ratehub responded with header X-API-Version: 2025-11 (was 2025-06)")
         if r < 0.4:
             L.append(ok(t, "quotes-api"))
-        elif r < 0.55 and broke and i < 320:
-            if i == 261:
-                L.append(f"{ts(t)} INFO  quotes-api partner ratehub responded with header X-API-Version: 2025-11 (was 2025-06)")
         elif r < 0.75 and broke:
             L.append(f"{ts(t)} ERROR quotes-api TypeError: cannot read field 'expiry_ts' of null in normalize_quote (partner=ratehub payload field quote.terms=null)")
         elif r < 0.85 and broke:
@@ -182,9 +185,13 @@ def s8():
 
 # 9. Cloud API quota exhausted at billing-month rollover
 def s9():
-    L, t = [], datetime(2026, 8, 31, 22, 0)
+    # 700 lines at ~1.25s apart only covered 14 minutes, so the log never reached the
+    # month boundary and not one QUOTA_EXCEEDED line was ever written — while the truth
+    # file described 429s starting at 00:00. Start earlier and step wider so the file
+    # actually spans the rollover it is about.
+    L, t = [], datetime(2026, 8, 31, 23, 0)
     for i in range(700):
-        t += timedelta(seconds=random.uniform(0.5, 2))
+        t += timedelta(seconds=random.uniform(5, 20))
         after = t >= datetime(2026, 9, 1, 0, 0)
         r = random.random()
         if r < 0.4:

@@ -43,7 +43,15 @@ freezing the code, then measure. Current honest numbers:
   between runs, the diagnosis does not — so the 10/10 is not a lucky sample. One run in
   twenty produced an empty report and succeeded on retry; worth watching, not yet a bug
   with a reproduction.
-- `bench/gen_bench2.py` (hard, 9 valid): 6/9 — misses stop one causal hop short
+- `bench/gen_bench2.py` (hard, 10 scenarios): **5/10** on qwen3:8b. A frontier model reading
+  the *same evidence packs* scores **10/10**, including all five the local model misses.
+  The pack is not the bottleneck; extraction from it is. Do not spend effort adding evidence
+  types until that gap closes — measured 2026-08-07.
+  Every local miss is the same shape: the symptom is named as the cause and the chain stops
+  one hop short. 01 "worker crashing" not the resume-same-offset loop; 03 "duplicate charges
+  cause duplicate-charge complaints" (circular) not DST; 05 "pool saturated" not the hot key
+  it had already quoted; 07 "GC pauses" not the 50x payload jump; 08 "replication conflicts"
+  not the two simultaneous leaders.
 - **Loghub-2.0 grouping accuracy: 79.3%** over 13 systems / 39M lines at 116k lines/s
   (`bench/loghub2_ga.py`). This is the number to move; the old 2k LogHub (79.1%,
   `bench/loghub_ga.py`) is kept for continuity only — ISSTA'24 showed it flatters
@@ -73,9 +81,11 @@ freezing the code, then measure. Current honest numbers:
   absent"). More extraction will not help; better-shaped extraction might.
 - Multi-hop failure is specifically an **edge** problem: models identify the right
   components (Node F1 62.2%) and fumble the links between them (Edge F1 43.4%).
-  That is exactly our 6/9. The fix both research directions converged on: hand the
-  model candidate causal *edges* (per-component first-error ordering, lagged
-  precedence relations) so edge inference becomes edge selection.
+  Both research directions converged on handing the model candidate causal *edges*
+  (per-component first-error ordering, lagged precedence relations). **Superseded by
+  measurement on 2026-08-07**: a frontier model gets 10/10 from the pack we already
+  build, so the edges are derivable from it and adding them would fix a problem we do
+  not have. Reopen only if a *frontier* model starts failing for lack of them.
 - **Do NOT turn this into a ReAct/tool-calling agent.** 8B-class models fail at
   tool-call syntax, not at reasoning; a structured multi-agent pipeline scored 0.0
   with a small base model where a frontier model scored 25-57%.
