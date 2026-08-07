@@ -3,8 +3,8 @@ class Logsleuth < Formula
 
   desc "Root-cause analysis that reads the whole log file, locally"
   homepage "https://github.com/alibaizhanov/logsleuth"
-  url "https://files.pythonhosted.org/packages/d8/30/3a70cd5c39b36825995692897b1e9edcab1b0cace60ee6494de19700f2e0/logsleuth-0.12.0.tar.gz"
-  sha256 "5508d39a9575dd1b88b0bde24e3ea1926ced9098fe890a8fdd2cd8226bc82013"
+  url "https://files.pythonhosted.org/packages/ae/da/806f06af69a0f889814c626717a450b47c777cf91c4c53c20540f3671e05/logsleuth-0.13.0.tar.gz"
+  sha256 "6579b90ae14ee498b8e74d96f224dabc7e2282d57dd313da60d46be489909801"
   license "MIT"
 
   depends_on "python@3.13"
