@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.alibaizhanov/logsleuth",
+  "title": "logsleuth",
+  "description": "Read a log file too large for your context and return what happened in it",
+  "version": "0.13.1",
+  "repository": {
+    "url": "https://github.com/alibaizhanov/logsleuth",
+    "source": "github"
+  },
+  "websiteUrl": "https://alibaizhanov.github.io/logsleuth/",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "logsleuth",
+      "version": "0.13.1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "LOGSLEUTH_OLLAMA_URL",
+          "description": "Only used by the CLI. The MCP server runs no model and ignores this.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

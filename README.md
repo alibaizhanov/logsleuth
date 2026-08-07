@@ -1,5 +1,7 @@
 # logsleuth
 
+<!-- mcp-name: io.github.alibaizhanov/logsleuth -->
+
 **Root-cause analysis that reads the whole log file, not the 200 lines you pasted.**
 
 Point it at an incident. It scans the entire file — **2 million lines in 12.6 seconds

@@ -165,6 +165,26 @@ brew test alibaizhanov/tap/logsleuth                      # must exit 0
 
 ---
 
+## The MCP registry
+
+The official registry feeds the downstream MCP directories, so publishing there once
+propagates; there is no per-directory submission to do.
+
+```sh
+mcp-publisher validate                 # checks server.json against the live schema
+mcp-publisher login github             # interactive; the io.github.alibaizhanov/ namespace
+mcp-publisher publish
+```
+
+Ownership of the PyPI package is proven by the string `mcp-name:
+io.github.alibaizhanov/logsleuth` appearing in the package description, which is
+README.md. **Do not remove that comment from the top of the README** — publishing is
+rejected without it, and the failure does not say why in an obvious way.
+
+`server.json` must track the released version: bump `version` and
+`packages[0].version` together with the two version strings above, or the registry
+records a version that does not exist on PyPI.
+
 ## The website
 
 `docs/` is served as GitHub Pages via `.github/workflows/pages.yml`.
